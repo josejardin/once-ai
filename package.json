@@ -1,0 +1,25 @@
+{
+  "name": "once-ai",
+  "version": "0.2.0",
+  "private": true,
+  "description": "ONCE AI (Oversight Network for Clean Elections) - prototype of an AI-assisted voter registration screening platform. Synthetic data only.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node scripts/selftest.mjs"
+  },
+  "dependencies": {
+    "@fontsource/montserrat": "^5.3.0",
+    "@mediapipe/tasks-vision": "^1.2.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.66.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}
