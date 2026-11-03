@@ -3,9 +3,9 @@ import { useApp } from '../store.jsx'
 import Dossier from '../components/Dossier.jsx'
 import { Badge, Card, PageHead, RiskBadge, ScoreBar, SyntheticBanner, EmptyState, fmtDate } from '../components/ui.jsx'
 import { CASE_STATUSES, caseOf } from '../lib/pipeline.js'
-import { CheckCircle2, MapPin, Filter, X, Clock, AlertTriangle, AlertOctagon } from 'lucide-react'
+import { CheckCircle2, MapPin, Filter, X, Clock, AlertTriangle, AlertOctagon, Trash2, RefreshCw } from 'lucide-react'
 import { LGU } from '../lib/gazetteer.js'
-import { getComelecVoters, getAllAttendance } from '../lib/api.js'
+import { getComelecVoters, getAllAttendance, clearAllComelecVoters } from '../lib/api.js'
 
 export default function Cases() {
   const { result, state, summary, dispatch, perm, notify } = useApp()
@@ -230,6 +230,38 @@ export default function Cases() {
     setManual('')
   }
 
+  // Detect mock test records in the pool
+  const mockCases = useMemo(() => {
+    return allCasesPool.filter((a) => !a.synthetic || a.isComelecEnrolled || (state.extraApps && state.extraApps.some((ea) => ea.id === a.id)))
+  }, [allCasesPool, state.extraApps])
+  const mockCount = mockCases.length
+
+  const handlePurgeAllMockTesting = async () => {
+    if (!window.confirm('⚠️ Are you sure you want to clean all mock test data? This will purge all mock citizen enrollments, test attendance records, and mock cases from the Investigation Queue.')) {
+      return
+    }
+    try {
+      await clearAllComelecVoters()
+    } catch (e) {
+      console.warn('Backend clear notice:', e)
+    }
+    dispatch({ type: 'clearMockTesting' })
+    setComelecVoters([])
+    setAttendanceRecords([])
+    setSel(null)
+    notify('All mock testing records and test cases successfully cleaned!')
+  }
+
+  const handleDeleteSingleApp = async (appId) => {
+    if (!window.confirm(`Permanently remove mock test record "${appId}" from the Investigation Queue?`)) {
+      return
+    }
+    dispatch({ type: 'removeApp', id: appId })
+    setComelecVoters((cur) => cur.filter((v) => v.voter_id !== appId))
+    if (sel === appId) setSel(null)
+    notify(`Mock test record ${appId} removed.`)
+  }
+
   return (
     <div className="page">
       <PageHead title="Investigation Cases (De La Salle Taft Avenue Sector)" feature="ERB Triage Dashboard | Manila Spatial Cluster Integration | Secure Audit Dossier">
@@ -248,6 +280,45 @@ export default function Cases() {
       </div>
       <div className="split">
         <Card title="Case queue" sub={`${rows.length} cases`}>
+          {mockCount > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#fef2f2',
+              border: '1.5px solid #fca5a5',
+              borderRadius: 8,
+              padding: '8px 12px',
+              marginBottom: 10
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#991b1b', fontSize: 13 }}>
+                <Trash2 size={16} color="#dc2626" />
+                <span><b>{mockCount} Mock Test Record{mockCount > 1 ? 's' : ''}</b> detected in investigation cases</span>
+              </div>
+              <button
+                type="button"
+                className="btn sm"
+                style={{
+                  background: '#dc2626',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  padding: '5px 12px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  cursor: 'pointer',
+                  borderRadius: 6
+                }}
+                onClick={handlePurgeAllMockTesting}
+                title="Permanently remove all mock test registrations and reset queue"
+              >
+                <Trash2 size={13} />
+                <span>Clean Mock Testing</span>
+              </button>
+            </div>
+          )}
           <div className="grid" style={{ gap: 6, marginBottom: 8 }}>
             <input type="search" placeholder="Search cases by ID, name, flag (e.g. RUSH), or address..." value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search cases" />
             <div className="grid g3" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
@@ -404,10 +475,35 @@ export default function Cases() {
                       <td style={{ width: 80 }}><ScoreBar score={a.score} label={a.label} /></td>
                       <td>
                         <RiskBadge label={a.label} />
-                        <div className="small" style={{ marginTop: 3 }}>
+                        <div className="small" style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                           <Badge tone={c.status === 'Resolved' ? 'low' : c.status === 'New' ? 'off' : 'info'}>
                             {c.status}
                           </Badge>
+                          {(!a.synthetic || a.isComelecEnrolled || state.extraApps?.some((ea) => ea.id === a.id)) && (
+                            <button
+                              type="button"
+                              className="btn sm"
+                              style={{
+                                padding: '2px 5px',
+                                background: '#fef2f2',
+                                border: '1px solid #fca5a5',
+                                color: '#dc2626',
+                                cursor: 'pointer',
+                                borderRadius: 4,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 2,
+                                fontSize: 10
+                              }}
+                              title={`Delete mock test record ${a.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteSingleApp(a.id)
+                              }}
+                            >
+                              <Trash2 size={10} /> Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

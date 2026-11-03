@@ -326,7 +326,8 @@ export default function IdentificationAnalysis() {
       await clearAllComelecVoters()
       await fetchVoters()
       setSelectedVoter(null)
-      notify('Mock voter database reset.')
+      dispatch({ type: 'clearMockTesting' })
+      notify('Mock voter database and investigation test cases cleared.')
     } catch (err) {
       alert('Error clearing registry: ' + err.message)
     }

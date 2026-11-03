@@ -57,6 +57,34 @@ function reducer(state, a) {
     case 'indicatorReview': return { ...state, indicatorReview: { ...state.indicatorReview, [a.key]: a.value }, audit: log({ action: 'INDICATOR_REVIEW', target: a.key, detail: `Indicator review status set to "${a.value}"` }) }
     case 'clusterReview': return { ...state, clusterReview: { ...state.clusterReview, [a.id]: a.value }, audit: log({ action: 'CLUSTER_REVIEW', target: a.id, detail: `Cluster review status set to "${a.value}"` }) }
     case 'logView': return { ...state, audit: log({ action: a.action, target: a.target, detail: a.detail }) }
+    case 'removeApp': {
+      const nextExtra = (state.extraApps || []).filter((x) => x.id !== a.id)
+      const nextCaseState = { ...state.caseState }
+      delete nextCaseState[a.id]
+      return {
+        ...state,
+        extraApps: nextExtra,
+        caseState: nextCaseState,
+        audit: log({ action: 'MOCK_RECORD_DELETED', target: a.id, detail: `Mock test record ${a.id} permanently removed.` })
+      }
+    }
+    case 'clearMockTesting': {
+      const seedIds = new Set(SEED_APPS.map((x) => x.id))
+      const cleanCaseState = {}
+      if (state.caseState) {
+        Object.entries(state.caseState).forEach(([k, v]) => {
+          if (seedIds.has(k)) {
+            cleanCaseState[k] = v
+          }
+        })
+      }
+      return {
+        ...state,
+        extraApps: [],
+        caseState: cleanCaseState,
+        audit: log({ action: 'CLEAR_MOCK_TESTING', target: 'all', detail: 'Purged all mock testing applications and test cases from investigation queue.' })
+      }
+    }
     case 'reset': return { ...initial, role: 'admin', theme: state.theme, audit: [makeAudit({ ...initial, role: 'admin' }, { action: 'DEMO_RESET', target: 'all', detail: 'Demo data reset to the synthetic seed state' })] }
     default: return state
   }

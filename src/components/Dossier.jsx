@@ -5,7 +5,7 @@ import { getBarangay } from '../lib/gazetteer.js'
 import { Badge, RiskBadge, SimBadge, ScoreBar, fmtDate, fmtTime } from './ui.jsx'
 import { HandwritingSample } from './Handwriting.jsx'
 import { download, escapeHtml, DISCLAIMER } from '../lib/export.js'
-import { MapPin, AlertTriangle, AlertOctagon, Clock, UserCheck } from 'lucide-react'
+import { MapPin, AlertTriangle, AlertOctagon, Clock, UserCheck, Trash2 } from 'lucide-react'
 
 const REVIEW = ['Unreviewed', 'Concern noted', 'Dismissed after review']
 const tone = { Triggered: 'mod', 'Mitigated by context': 'info', 'Not triggered': 'low', 'Not assessable': 'off' }
@@ -218,6 +218,26 @@ export default function Dossier({ appId, appData, inline }) {
             <button className="btn" disabled={locked || !note.trim()} onClick={() => { dispatch({ type: 'note', id: app.id, text: note.trim() }); setNote('') }}>Add note</button></div>
         </div>
         <ul className="timeline" style={{ marginTop: 10 }}>{cs.notes.length ? cs.notes.slice().reverse().map((n, i) => <li key={i}><span className="mono muted">{fmtTime(n.ts)} - {n.role}</span><br />{n.text}</li>) : <li className="muted">No notes yet.</li>}</ul>
+        {(!app.synthetic || app.isComelecEnrolled || state.extraApps?.some((ea) => ea.id === app.id)) && (
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1.5px dashed #fca5a5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="small muted">Mock Testing Record:</span>
+            <button
+              type="button"
+              className="btn sm"
+              style={{ background: '#fef2f2', border: '1px solid #f87171', color: '#991b1b', display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
+              onClick={() => {
+                if (window.confirm(`Permanently delete mock test record ${app.id} (${app.name}) from investigation queue?`)) {
+                  dispatch({ type: 'removeApp', id: app.id })
+                  notify(`Mock record ${app.id} deleted.`)
+                  openApp(null)
+                }
+              }}
+            >
+              <Trash2 size={13} />
+              <span>Delete Mock Test Record</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="sect"><h3>Review history and audit trail</h3>

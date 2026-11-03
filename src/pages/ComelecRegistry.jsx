@@ -8,6 +8,7 @@ import {
 import { getComelecVoters, registerComelecVoter, clearAllComelecVoters } from '../lib/api.js';
 import { calculateFaceAlignedMetrics, cropFaceCanvas } from '../lib/livenessCalculations.js';
 import { Badge, Card, PageHead } from '../components/ui.jsx';
+import { useApp } from '../store.jsx';
 
 const PRECINCTS = [
   'Precinct 101 - Manila',
@@ -17,6 +18,7 @@ const PRECINCTS = [
 ];
 
 export default function ComelecRegistry() {
+  const { dispatch } = useApp();
   const [voters, setVoters] = useState([]);
   const [search, setSearch] = useState('');
   const [showEnrollModal, setShowEnrollModal] = useState(false);
@@ -64,6 +66,7 @@ export default function ComelecRegistry() {
     setClearing(true);
     try {
       await clearAllComelecVoters();
+      if (dispatch) dispatch({ type: 'clearMockTesting' });
       await fetchVoters();
       alert("✓ Registry successfully cleared! All mock records wiped.");
     } catch (err) {
