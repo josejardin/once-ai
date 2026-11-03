@@ -45,8 +45,8 @@ PRECINCT_TURNOUT: Dict[str, int] = {
 class RegisterVoterRequest(BaseModel):
     name: str
     precinct_id: str
-    barangay: str
-    birthdate: str
+    barangay: Optional[str] = "Barangay Malate, Manila"
+    birthdate: Optional[str] = "2001-05-15"
     photo_base64: str
 
 class PrecinctCheckinRequest(BaseModel):

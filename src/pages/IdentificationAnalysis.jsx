@@ -144,6 +144,8 @@ export default function IdentificationAnalysis() {
       await registerComelecVoter({
         name: enrollName.trim(),
         precinct_id: enrollPrecinct,
+        barangay: enrollPrecinct,
+        birthdate: '2001-05-15',
         photo_base64: photoToUse
       })
       await fetchVoters()
