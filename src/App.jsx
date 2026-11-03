@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react'
 import { useApp, ROLES } from './store.jsx'
 import { Drawer } from './components/ui.jsx'
 import Dossier from './components/Dossier.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { 
   LayoutGrid, ScanFace, Map, Users, FolderSearch, 
   MessageSquareText, TrendingUp, FileText, Settings as SettingsIcon,
-  ShieldCheck, User
+  ShieldCheck, User, IdCard, Menu, X, Trash2
 } from 'lucide-react'
+import { clearAllComelecVoters, getComelecVoters } from './lib/api.js'
 
 import Dashboard from './pages/Dashboard.jsx'
 import IdentificationAnalysis from './pages/IdentificationAnalysis.jsx'
@@ -14,6 +16,7 @@ import Geo from './pages/Geo.jsx'
 import VoterRecords from './pages/VoterRecords.jsx'
 import Cases from './pages/Cases.jsx'
 import Chatbot from './pages/Chatbot.jsx'
+import ComelecRegistry from './pages/ComelecRegistry.jsx'
 import Analytics from './pages/Analytics.jsx'
 import AuditLogs from './pages/AuditLogs.jsx'
 import SettingsPage from './pages/Settings.jsx'
@@ -29,6 +32,7 @@ const MAIN_MENU = [
 ]
 
 const SYSTEM_MENU = [
+  { id: 'comelec', label: 'COMELEC Registry', icon: IdCard, el: ComelecRegistry },
   { id: 'analytics', label: 'Analytics & Reports', icon: TrendingUp, el: Analytics },
   { id: 'audit', label: 'Audit Logs', icon: FileText, el: AuditLogs },
   { id: 'settings', label: 'Settings', icon: SettingsIcon, el: SettingsPage },
@@ -39,22 +43,61 @@ const ALL_PAGES = [...MAIN_MENU, ...SYSTEM_MENU]
 const HASH_ALIASES = {
   intake: 'identification',
   screening: 'identification',
-  comelec: 'identification',
+  registry: 'comelec',
   system: 'audit',
   'public-map': 'public-map',
   'live-tracking': 'public-map'
 }
 
 const readHash = () => {
-  const raw = location.hash.replace('#/', '').split('?')[0]
+  const raw = location.hash.replace(/^#\/?/, '').split('?')[0]
   const resolved = HASH_ALIASES[raw] || raw
   if (resolved === 'public-map') return 'public-map'
   return (ALL_PAGES.find((p) => p.id === resolved) || MAIN_MENU[0]).id
 }
 
 export default function App() {
-  const { state, summary, openId, openApp, toast } = useApp()
+  const { state, dispatch, summary, openId, openApp, toast, notify } = useApp()
   const [page, setPage] = useState(readHash)
+  const [mobileNav, setMobileNav] = useState(false)
+  const [purging, setPurging] = useState(false)
+  const [realCasesCount, setRealCasesCount] = useState(0)
+
+  useEffect(() => {
+    async function syncRealCases() {
+      try {
+        const data = await getComelecVoters()
+        const voters = data?.voters || []
+        // Count voters or walk-ins that have an active case (status !== 'Resolved')
+        const activeCount = voters.filter(v => {
+          const cs = state.caseState[v.voter_id]
+          const isResolved = cs?.status === 'Resolved'
+          return !isResolved
+        }).length + (state.extraApps || []).filter(a => !a.synthetic && state.caseState[a.id]?.status !== 'Resolved').length
+        setRealCasesCount(activeCount)
+      } catch (e) {
+        setRealCasesCount((state.extraApps || []).filter(a => !a.synthetic && state.caseState[a.id]?.status !== 'Resolved').length)
+      }
+    }
+    syncRealCases()
+    const timer = setInterval(syncRealCases, 2500)
+    return () => clearInterval(timer)
+  }, [state.caseState, state.extraApps])
+
+  const handlePurgeAllStorage = async () => {
+    if (!window.confirm('Wipe all storages (browser localStorage, cached test cases, and backend biometric database) completely clean?')) {
+      return
+    }
+    setPurging(true)
+    try {
+      await clearAllComelecVoters()
+    } catch (e) {
+      console.warn('Backend clear notice:', e)
+    }
+    dispatch({ type: 'purgeAllStorage' })
+    if (notify) notify('🧹 All storages completely wiped clean! System reset.')
+    setPurging(false)
+  }
 
   useEffect(() => {
     const h = () => setPage(readHash())
@@ -63,31 +106,54 @@ export default function App() {
   }, [])
 
   const go = (id) => { 
+    const resolved = HASH_ALIASES[id] || id
     location.hash = '#/' + id
-    setPage(id)
+    setPage(resolved)
     openApp(null)
+    setMobileNav(false)
     document.querySelector('.main')?.scrollTo(0, 0) 
   }
 
   // Standalone Public View (for external observers, watchdogs, public embedded link)
   if (page === 'public-map') {
-    return <PublicGeoMap />
+    return (
+      <ErrorBoundary onGoHome={() => go('dashboard')}>
+        <PublicGeoMap />
+      </ErrorBoundary>
+    )
   }
 
   const Page = ALL_PAGES.find((p) => p.id === page)?.el || Dashboard
 
   return (
     <div className="shell">
-      <aside className="sidebar">
+      {/* Mobile Backdrop Overlay */}
+      {mobileNav && (
+        <div 
+          className="sidebar-overlay" 
+          onClick={() => setMobileNav(false)} 
+          aria-hidden="true" 
+        />
+      )}
+
+      <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
         {/* Brand Header */}
         <div className="brand">
-          <div className="brand-icon-box">
-            <ShieldCheck size={20} color="#fbbf24" strokeWidth={2.4} />
+          <div className="brand-icon-box" style={{ background: 'transparent', padding: 0, overflow: 'hidden', borderRadius: 8 }}>
+            <img src="/logo.png" alt="ONCE AI Logo" width="32" height="32" style={{ objectFit: 'contain', display: 'block' }} />
           </div>
-          <div>
+          <div className="brand-text">
             <div className="brand-title">ONCE AI</div>
-            <div className="brand-sub">COMELEC Election Oversight</div>
+            <div className="brand-meaning">Oversight Network for Clean Elections</div>
           </div>
+          {/* Mobile Close Button */}
+          <button 
+            className="mobile-close-btn"
+            onClick={() => setMobileNav(false)}
+            aria-label="Close sidebar"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {/* MAIN MENU Group */}
@@ -102,8 +168,8 @@ export default function App() {
             >
               <p.icon size={18} strokeWidth={2} aria-hidden />
               <span>{p.label}</span>
-              {p.id === 'cases' && summary.awaiting + summary.pending > 0 && (
-                <span className="count">{summary.awaiting + summary.pending}</span>
+              {p.id === 'cases' && realCasesCount > 0 && (
+                <span className="count">{realCasesCount}</span>
               )}
             </button>
           ))}
@@ -139,13 +205,19 @@ export default function App() {
 
       <div className="main">
         <header className="topbar">
+          <button 
+            className="mobile-menu-btn" 
+            onClick={() => setMobileNav(!mobileNav)} 
+            aria-label="Toggle Navigation Menu"
+          >
+            {mobileNav ? <X size={20} /> : <Menu size={20} />}
+          </button>
           <span className="badge sim" title="All records are fictional">SYNTHETIC DEMO DATA</span>
-          <span className="muted small grow">Decision-support for COMELEC Election Registration Board. Never an automatic disqualification.</span>
-          <span className="badge ok" style={{ fontWeight: 700 }}>
-            {ROLES[state.role]?.label || 'COMELEC Staff / Administrator'}
-          </span>
+          <span className="muted small grow">COMELEC Decision-Support System</span>
         </header>
-        <Page go={go} />
+        <ErrorBoundary key={page} onGoHome={() => go('dashboard')}>
+          <Page go={go} />
+        </ErrorBoundary>
       </div>
 
       {openId && <Drawer onClose={() => openApp(null)}><Dossier appId={openId} /></Drawer>}

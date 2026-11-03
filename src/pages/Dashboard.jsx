@@ -27,7 +27,7 @@ export default function Dashboard({ go }) {
         <>
           <button className="hero-stat" onClick={() => go('intake')}><b><CountUp value={s.total} /></b><span>Applications screened</span></button>
           <button className="hero-stat" onClick={() => go('screening')}><b><CountUp value={s.flagged} /></b><span>For human review</span></button>
-          <button className="hero-stat strong" onClick={() => go('cases')}><b><CountUp value={s.high} /></b><span>High-priority cases</span></button>
+          <button className="hero-stat strong" onClick={() => go('cases')}><b><CountUp value={queue.length} /></b><span>High-priority cases</span></button>
           <button className="btn hero-cta" onClick={() => document.getElementById('queue')?.scrollIntoView({ behavior: 'smooth' })}>Open priority queue <ArrowRight size={16} /></button>
         </>
       }>

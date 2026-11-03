@@ -2,6 +2,7 @@ import React from 'react'
 import { useApp, ROLES } from '../store.jsx'
 import { Badge, Card, PageHead, SyntheticBanner } from '../components/ui.jsx'
 import { DEFAULT_CONFIG, INDICATORS } from '../lib/pipeline.js'
+import { clearAllComelecVoters } from '../lib/api.js'
 import { Settings as SettingsIcon, Shield, Sun, Moon, RotateCcw, Lock, CheckCircle2 } from 'lucide-react'
 
 const STATUS = [
@@ -102,19 +103,24 @@ export default function Settings() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <button 
-              className="btn" 
+              className="btn danger" 
               disabled={!perm.canConfig} 
               title={perm.canConfig ? '' : 'Requires Administrator role'} 
-              onClick={() => { 
-                if (confirm('Reset all cases, notes, intakes, settings and audit log to initial state?')) { 
-                  dispatch({ type: 'reset' })
-                  notify('System demo data successfully restored to factory defaults.') 
+              onClick={async () => { 
+                if (confirm('Reset all data? This will purge all COMELEC registry voters, biometric vectors, new walk-in intakes, notes, settings, and audit logs back to empty factory state.')) { 
+                  try {
+                    await clearAllComelecVoters()
+                  } catch (e) {
+                    console.warn('Backend clear notice:', e)
+                  }
+                  dispatch({ type: 'purgeAllStorage' })
+                  notify('All COMELEC registry voter records, intake data, and settings have been completely reset.') 
                 } 
               }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center', padding: '10px 14px' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center', padding: '10px 14px', background: '#dc2626', color: '#fff', fontWeight: 700 }}
             >
               <RotateCcw size={15} />
-              <span>Reset Demo Applications & Cases</span>
+              <span>Reset All Data & Registry (Full Factory Reset)</span>
             </button>
             {!perm.canConfig && <span className="small muted">Switch role to Administrator to perform database reset.</span>}
           </div>

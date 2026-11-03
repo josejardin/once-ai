@@ -123,12 +123,17 @@ export default function IdentificationAnalysis() {
   const live = useMemo(() => normalizeAddress(addr, 'preview'), [addr])
   useEffect(() => () => preview && URL.revokeObjectURL(preview), [preview])
 
+    const userClearedRef = useRef(false)
+  const hasInitializedRef = useRef(false)
+
   const fetchVoters = async () => {
     try {
       const data = await getComelecVoters()
       if (data?.voters) {
         setComelecVoters(data.voters)
-        if (!selectedVoter && data.voters.length > 0) {
+        // Only initialize default selection once on initial load if user hasn't explicitly cleared
+        if (!hasInitializedRef.current && !userClearedRef.current && data.voters.length > 0) {
+          hasInitializedRef.current = true
           const v = data.voters[0]
           setSelectedVoter(v)
           setName(v.name)
@@ -143,6 +148,8 @@ export default function IdentificationAnalysis() {
 
   useEffect(() => {
     fetchVoters()
+    const timer = setInterval(fetchVoters, 3000)
+    return () => clearInterval(timer)
   }, [])
 
   const handleBiometricChange = (bioData) => {
@@ -363,8 +370,8 @@ export default function IdentificationAnalysis() {
       await clearAllComelecVoters()
       await fetchVoters()
       setSelectedVoter(null)
-      dispatch({ type: 'clearMockTesting' })
-      notify('Mock voter database and investigation test cases cleared.')
+      dispatch({ type: 'purgeAllStorage' })
+      notify('Mock voter database, browser storage, and investigation test cases completely cleared.')
     } catch (err) {
       alert('Error clearing registry: ' + err.message)
     }
@@ -394,8 +401,8 @@ export default function IdentificationAnalysis() {
 
   return (
     <div className="page">
-      <PageHead title="Identification Analysis" feature="Facial Recognition | Handwriting Similarity">
-        Biometric and forensic identification workspace. Cross-checks facial features in RAM against the central registry to detect flying voters and block impostors, alongside handwriting similarity clustering for batch forgery detection.
+      <PageHead title="Identification Analysis" feature="Dual-Face Biometrics | Forensic Analysis">
+        AI-powered biometric attendance and signature forensics to intercept flying voters, impostors, and forged registrations.
       </PageHead>
       <SyntheticBanner />
 
@@ -403,10 +410,9 @@ export default function IdentificationAnalysis() {
         value={tab} 
         onChange={setTab} 
         tabs={[
-          { id: 'facial', label: 'Dual-Face Attendance (IN & OUT) & Biometrics', icon: ScanFace },
-          { id: 'signature', label: 'Forensic Signature Validation & Collusion', icon: PenTool },
-          { id: 'handwriting', label: 'Handwriting Similarity (Batch Forgery Detector)', icon: PenTool },
-          { id: 'registry', label: `COMELEC Mock Registry (${comelecVoters.length})`, icon: IdCard }
+          { id: 'facial', label: 'Dual-Face Biometrics & Pacing AI', icon: ScanFace },
+          { id: 'signature', label: 'Forensic Signature Validation', icon: PenTool },
+          { id: 'handwriting', label: 'Handwriting Batch Forgery Analysis', icon: PenTool }
         ]} 
       />
 
@@ -415,131 +421,118 @@ export default function IdentificationAnalysis() {
         <div className="grid g2">
           <Card title="Biometric Intake & 1:1 Identity Verification" sub="100% Local AI in RAM • Zero Cloud Storage">
             <div className="grid" style={{ gap: 12 }}>
-              {/* Quick Mock Voter Selector */}
-              {comelecVoters.length > 0 && (
-                <div style={{ padding: '10px 14px', background: 'var(--panel2)', border: '1px dashed var(--border)', borderRadius: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span className="small muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <IdCard size={14} />
-                      <b>Autofill from Enrolled COMELEC Mock Voter ID (Optional)</b>
-                    </span>
-                    {selectedVoter && (
-                      <button
-                        type="button"
-                        className="chip small"
-                        onClick={() => { setSelectedVoter(null); setName(''); }}
-                      >
-                        ✕ Clear Selection
-                      </button>
-                    )}
-                  </div>
-                  <div className="chips" style={{ marginTop: 4 }}>
-                    {comelecVoters.map((v) => {
-                      const isSelected = selectedVoter?.voter_id === v.voter_id
-                      return (
-                        <button
-                          key={v.voter_id}
-                          type="button"
-                          className={`chip ${isSelected ? 'primary' : ''}`}
-                          onClick={() => {
-                            if (isSelected) {
-                              setSelectedVoter(null)
-                            } else {
-                              setSelectedVoter(v)
-                              setName(v.name)
-                              setAge(v.age || 24)
-                              setAddr(v.declared_address || v.rawAddress || v.barangay || `Purok 1, ${v.precinct_id}`)
-                            }
-                          }}
-                        >
-                          {v.name} ({v.vin || v.voter_id.slice(-6)})
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {selectedVoter && (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  background: 'rgba(34, 197, 94, 0.08)',
-                  border: '1.5px solid rgba(34, 197, 94, 0.3)',
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  fontSize: 12
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#15803d', fontWeight: 600 }}>
-                    <CheckCircle2 size={15} />
-                    <span>✓ Autofilled from COMELEC Mock Registry: <b>{selectedVoter.name}</b> (No re-typing needed)</span>
-                  </div>
-                  <Badge tone="low">{selectedVoter.precinct_id || 'Registered'}</Badge>
-                </div>
-              )}
-
-              <div className="grid g2">
-                <div className="field">
-                  <label htmlFor="nm">Applicant name (fictitious)</label>
-                  <input 
-                    id="nm" 
-                    type="text" 
-                    value={name} 
-                    onChange={(e) => { 
-                      setName(e.target.value)
-                      if (selectedVoter && e.target.value !== selectedVoter.name) setSelectedVoter(null)
-                    }} 
-                    placeholder="e.g. Juan Sample" 
-                  />
-                </div>
-                <div className="grid g2">
-                  <div className="field">
-                    <label htmlFor="ag">Age</label>
-                    <input id="ag" type="number" min="18" max="120" value={age} onChange={(e) => setAge(e.target.value)} />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="ty">Type</label>
-                    <select id="ty" value={type} onChange={(e) => setType(e.target.value)}>
-                      <option>New registration</option>
-                      <option>Transfer of registration</option>
-                    </select>
-                  </div>
-                </div>
-                {type === 'Transfer of registration' && (
-                  <div className="field" style={{ gridColumn: '1 / -1', background: 'var(--panel2)', padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--border)' }}>
-                    <label htmlFor="tp" style={{ fontWeight: 700, color: 'var(--blue)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span>🏛️ Available Target Precinct (Transfer Destination)</span>
-                    </label>
-                    <select 
-                      id="tp" 
-                      value={transferPrecinct} 
-                      onChange={(e) => {
-                        setTransferPrecinct(e.target.value)
-                        setAddr(`Purok 1, ${e.target.value}`)
+              {/* COMELEC Staff Voter Picker */}
+              <div style={{
+                padding: '14px 16px',
+                background: 'var(--panel2)',
+                border: '1.5px solid var(--border)',
+                borderRadius: 14,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 13, color: 'var(--blue)' }}>
+                    <IdCard size={18} />
+                    <span>COMELEC Staff: Pick Registered Citizen to Verify</span>
+                  </span>
+                  {selectedVoter && (
+                    <button
+                      type="button"
+                      className="chip small"
+                      onClick={() => {
+                        setSelectedVoter(null)
+                        setName('')
                       }}
-                      style={{ marginTop: 4, fontWeight: 600 }}
+                      style={{ cursor: 'pointer' }}
                     >
-                      {PRECINCTS.map((p) => (
-                        <option key={p} value={p}>{p}</option>
+                      ✕ Clear Selection
+                    </button>
+                  )}
+                </div>
+
+                {comelecVoters.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <select
+                      value={selectedVoter?.voter_id || ''}
+                      onChange={(e) => {
+                        const found = comelecVoters.find(v => v.voter_id === e.target.value)
+                        setSelectedVoter(found || null)
+                        if (found) {
+                          setName(found.name)
+                          setAge(found.age || 24)
+                          setAddr(found.declared_address || found.rawAddress || found.barangay || `Purok 1, ${found.precinct_id}`)
+                        } else {
+                          setName('')
+                        }
+                      }}
+                      style={{
+                        padding: '10px 14px',
+                        borderRadius: 10,
+                        fontWeight: 700,
+                        fontSize: 13,
+                        background: 'var(--panel)',
+                        border: '1.5px solid var(--border)',
+                        color: 'var(--text)'
+                      }}
+                    >
+                      <option value="">-- Choose Voter from COMELEC Database --</option>
+                      {comelecVoters.map((v) => (
+                        <option key={v.voter_id} value={v.voter_id}>
+                          {v.name} ({v.vin || v.voter_id}) — {v.precinct_id}
+                        </option>
                       ))}
                     </select>
-                    <div className="small muted" style={{ marginTop: 4 }}>
-                      Current Registered: <b>{selectedVoter?.precinct_id || 'Precinct 101 - Manila'}</b> ➔ Transferring to: <b>{transferPrecinct}</b>
-                    </div>
+
+                    {/* Selected Voter Info Card */}
+                    {selectedVoter && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        background: 'rgba(34, 197, 94, 0.08)',
+                        border: '1.5px solid rgba(34, 197, 94, 0.35)',
+                        padding: '10px 14px',
+                        borderRadius: 10,
+                        flexWrap: 'wrap',
+                        gap: 10
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          {selectedVoter.photo_base64 && (
+                            <img
+                              src={selectedVoter.photo_base64}
+                              alt={selectedVoter.name}
+                              style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', border: '2px solid #22c55e', flexShrink: 0 }}
+                            />
+                          )}
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: 13, color: '#15803d' }}>
+                              {selectedVoter.name}
+                            </div>
+                            <div className="mono muted" style={{ fontSize: 11 }}>
+                              VIN: {selectedVoter.vin || selectedVoter.voter_id} • Age: {selectedVoter.age || 24}
+                            </div>
+                            <div className="small muted" style={{ fontSize: 10 }}>
+                              Assigned Precinct: <b>{selectedVoter.precinct_id}</b>
+                            </div>
+                          </div>
+                        </div>
+                        <Badge tone="low">Ready for Biometrics</Badge>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{
+                    padding: '12px 14px',
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    border: '1.5px dashed #f87171',
+                    borderRadius: 10,
+                    color: '#991b1b',
+                    fontSize: 12
+                  }}>
+                    ⚠️ No registered voters found. Please enroll voters in the <b>COMELEC Registry</b> tab or upload a photo in the camera below.
                   </div>
                 )}
-              </div>
-
-              <div className="field">
-                <label htmlFor="ad">Declared address (as written on the form)</label>
-                <textarea 
-                  id="ad" 
-                  value={addr} 
-                  onChange={(e) => setAddr(e.target.value)} 
-                  placeholder="e.g. Purok 3, Barangay Sampaguita"
-                  rows={2}
-                />
               </div>
 
               {/* LIVE BIOMETRIC WEBCAM / UPLOAD COMPONENT */}
@@ -722,99 +715,7 @@ export default function IdentificationAnalysis() {
             </Card>
           </div>
 
-          {pair && (
-            <Card title="Visual Handwriting Comparison" sub={`${pair.a} vs ${pair.b} — Similarity: ${pair.sim.toFixed(3)}`}>
-              <div className="compare">
-                <HandwritingSample app={pa} />
-                <HandwritingSample app={pb} />
-              </div>
-              <div className="row" style={{ marginTop: 10 }}>
-                <button className="btn" onClick={() => openApp(pair.a)}>Open dossier {pair.a}</button>
-                <button className="btn" onClick={() => openApp(pair.b)}>Open dossier {pair.b}</button>
-                <span className="small muted">Investigation findings connect directly into Investigation Cases for final ERB ruling.</span>
-              </div>
-            </Card>
-          )}
         </>
-      )}
-
-      {/* ----------------- TAB 3: COMELEC MOCK REGISTRY ----------------- */}
-      {tab === 'registry' && (
-        <Card title="Official COMELEC Mock Citizen Registry" sub="Central Biometric Database & Mock Voter IDs">
-          <div className="row" style={{ marginBottom: 12, gap: 10 }}>
-            <input 
-              type="search" 
-              placeholder="Search mock voter by name, VIN, or precinct" 
-              value={registrySearch} 
-              onChange={(e) => setRegistrySearch(e.target.value)} 
-              style={{ maxWidth: 300 }} 
-            />
-            <button className="btn primary" onClick={() => setShowEnrollModal(true)}>
-              <Plus size={14} style={{ marginRight: 4 }} />
-              Enroll New Mock Citizen ID
-            </button>
-            <button className="btn" onClick={fetchVoters} title="Refresh">
-              <RefreshCw size={14} />
-            </button>
-            <button className="btn" onClick={handleClearRegistry} style={{ marginLeft: 'auto', color: 'var(--high)' }}>
-              <Trash2 size={14} style={{ marginRight: 4 }} />
-              Reset Mock Registry
-            </button>
-          </div>
-
-          <div className="grid g3" style={{ gap: 14 }}>
-            {filteredVoters.map((v) => (
-              <div 
-                key={v.voter_id} 
-                style={{ 
-                  background: 'var(--panel2)', 
-                  border: '1px solid var(--border)', 
-                  borderRadius: 14, 
-                  padding: 14, 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  gap: 10 
-                }}
-              >
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <div style={{ width: 64, height: 64, borderRadius: 10, overflow: 'hidden', background: '#000', border: '1px solid var(--border)', flexShrink: 0 }}>
-                    {v.photo_base64 ? (
-                      <img src={v.photo_base64} alt={v.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: '#64748b' }}>No photo</div>
-                    )}
-                  </div>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.name}</div>
-                    <div className="mono small" style={{ color: 'var(--blue)' }}>{v.vin || v.voter_id}</div>
-                    <div className="small muted">{v.precinct_id}</div>
-                  </div>
-                </div>
-
-                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                  <Badge tone="low">Enrolled (Local RAM)</Badge>
-                  <button 
-                    className="chip small"
-                    onClick={() => {
-                      setSelectedVoter(v)
-                      setName(v.name)
-                      setAddr(`Purok 1, ${v.precinct_id}`)
-                      setTab('facial')
-                      notify(`Selected ${v.name} for 1:1 Biometric Verification test.`)
-                    }}
-                  >
-                    Test 1:1 Check-in →
-                  </button>
-                </div>
-              </div>
-            ))}
-            {!filteredVoters.length && (
-              <div className="muted small" style={{ gridColumn: 'span 3', padding: 24, textAlign: 'center' }}>
-                No mock citizens found. Click "Enroll New Mock Citizen ID" to add your face or test subjects.
-              </div>
-            )}
-          </div>
-        </Card>
       )}
 
       {/* ENROLL MOCK CITIZEN MODAL */}

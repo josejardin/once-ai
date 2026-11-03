@@ -1,3 +1,4 @@
+import { clearAllComelecVoters } from '../lib/api.js'
 import React, { useState } from 'react'
 import { useApp } from '../store.jsx'
 import { Badge, Card, PageHead, SyntheticBanner, fmtTime } from '../components/ui.jsx'
@@ -77,7 +78,7 @@ export default function System() {
         <Card title="Demo data controls">
           <div className="banner small">All records are synthetic and fictitious. They are not COMELEC voter data. This prototype does not access COMELEC systems or AFIS and has no real-time integration.</div>
           <div className="row" style={{ marginTop: 10 }}>
-            <button className="btn" disabled={!perm.canConfig} title={perm.canConfig ? '' : 'Requires Administrator role'} onClick={() => { if (confirm('Reset all cases, notes, new intakes, settings and the audit log to the seed state?')) { dispatch({ type: 'reset' }); notify('Demo data reset.') } }}>Reset demo data</button>
+            <button className="btn" disabled={!perm.canConfig} title={perm.canConfig ? '' : 'Requires Administrator role'} onClick={() => { if (confirm('Reset all cases, notes, new intakes, settings and the audit log to the seed state?')) { clearAllComelecVoters().catch(()=>{}); dispatch({ type: 'purgeAllStorage' }); notify('Demo data and COMELEC registry reset.') } }}>Reset demo data</button>
             {!perm.canConfig && <span className="small muted">Switch the demo role to Administrator to reset.</span>}
           </div>
         </Card>

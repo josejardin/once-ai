@@ -117,7 +117,8 @@ def run_tests():
         "simulated_duration_seconds": 25
     })
     maria_data = res5_out.json()
-    assert maria_data["status"] == "COMPLETED"
+    assert maria_data["status"] in ["COMPLETED_WITH_ANOMALY", "COMPLETED"]
+    assert maria_data["is_suspicious"] is True
     assert maria_data["timing_anomaly"]["flag"] == "RUSH_ANOMALY"
     print(f">> TEST 5 PASSED: RUSH ANOMALY FLAGGED! Duration: {maria_data['duration_formatted']}, Severity: {maria_data['timing_anomaly']['severity']}.")
 
@@ -144,12 +145,30 @@ def run_tests():
     assert len(analytics["outliers"]) >= 1
     print(f">> TEST 7 PASSED: Learned mean duration = {analytics['stats']['learned_mean_seconds']}s, Outliers tracked = {len(analytics['outliers'])}.")
 
-    # Test 8: Purge & Reset
+    # Test 8: Active Screen Flash Reflection Anti-Spoofing (Phone Screen Replay Attack)
+    print("\n[TEST 8] Testing Active Screen Flash Reflection (Phone Screen Replay Attack Interception)...")
+    res_spoof = client.post("/api/biometrics/verify-face-in", json={
+        "voter_id": "VOTER-PHONE-ATTACK",
+        "voter_name": "SPOOFER WITH SMARTPHONE",
+        "precinct_id": "Precinct 101 - Manila",
+        "image_base64": face_a,
+        "is_phone_spoof": True,
+        "screen_flash_verified": False,
+        "flash_reflection_score": 14.2,
+        "spoof_reason": "Specular glass glare hotspot & lack of 3D organic skin diffusion detected. Smartphone/tablet photo replay blocked."
+    })
+    assert res_spoof.status_code == 200
+    data_spoof = res_spoof.json()
+    assert data_spoof["status"] == "PHONE_SPOOF_BLOCKED"
+    assert data_spoof["anomaly_flag"] == "PHONE_SCREEN_REPLAY_ATTACK"
+    print(">> TEST 8 PASSED: Phone screen spoof intercepted and blocked by Active Flash Reflection!")
+
+    # Test 9: Purge & Reset
     print("\n[TEST 8] Testing DELETE /api/comelec/voters/clear-all...")
     res8 = client.delete("/api/comelec/voters/clear-all")
     assert res8.status_code == 200
     assert res8.json()["status"] == "ALL_VOTERS_PURGED"
-    print(">> TEST 8 PASSED: System successfully wiped.")
+    print(">> TEST 9 PASSED: System successfully wiped.")
 
     print("\nALL DUAL-FACE ATTENDANCE & SELF-LEARNED AI TESTS PASSED WITH 100% SUCCESS!\n")
 

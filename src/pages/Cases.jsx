@@ -64,9 +64,8 @@ export default function Cases() {
     return () => window.removeEventListener('hashchange', parseHash)
   }, [])
 
-  // Unified Cases Pool: Screened Applications + Live Enrolled Citizens & Attendance Events
+  // Unified Cases Pool: ONLY Real COMELEC Enrolled Citizens & Live Intake Applications (Zero synthetic seed cases)
   const allCasesPool = useMemo(() => {
-    const existingIds = new Set(result.apps.map((a) => a.id))
     const attMap = {}
     attendanceRecords.forEach((att) => { attMap[att.voter_id] = att })
 
@@ -82,7 +81,7 @@ export default function Cases() {
         id: v.voter_id,
         vin: v.vin,
         name: v.name,
-        age: 26,
+        age: v.age || 26,
         type: 'COMELEC Enrolled Citizen',
         submittedAt: att?.face_in_timestamp || v.created_at || new Date().toISOString(),
         submittedVia: 'Biometric Intake Station',
@@ -99,18 +98,18 @@ export default function Cases() {
           status: v.registration_status
         },
         addr: {
-          original: v.barangay || v.precinct_id || 'Taft Ave, Malate, Manila',
-          normalized: v.barangay || v.precinct_id || 'Taft Ave, Malate, Manila',
+          original: v.declared_address || v.barangay || v.precinct_id || 'Taft Ave, Malate, Manila',
+          normalized: v.declared_address || v.barangay || v.precinct_id || 'Taft Ave, Malate, Manila',
           status: 'Resolved',
           precision: 'street',
-          precisionBasis: 'Taft Ave, Malate (DLSU Ward)',
+          precisionBasis: v.precinct_id || 'Assigned Precinct Area',
           confidence: 1.0,
           warnings: [],
-          components: { barangay: 'Maligaya (DLSU Taft)' },
+          components: { barangay: v.barangay || 'Maligaya' },
           coords: [14.5648, 120.9932]
         },
         indicators: {
-          geo: { key: 'geo', severity: 0, result: 'Not triggered', explanation: 'Within DLSU Taft Avenue precinct area.', evidence: [] },
+          geo: { key: 'geo', severity: 0, result: 'Not triggered', explanation: 'Assigned precinct area verified.', evidence: [] },
           address: { key: 'address', severity: 0, result: 'Not triggered', explanation: 'Declared address matches COMELEC registry record.', evidence: [] },
           unresolved: { key: 'unresolved', severity: 0, result: 'Not triggered', explanation: 'Address resolved to precinct.', evidence: [] },
           handwriting: { key: 'handwriting', severity: 0, result: 'Not assessable', explanation: 'Digital biometric intake station.', evidence: [] },
@@ -129,7 +128,9 @@ export default function Cases() {
       }
     })
 
-    const merged = [...result.apps]
+    // Only combine live extraApps (from walk-in intake) and enrolled COMELEC voters
+    const extraNonSynthetic = (state.extraApps || []).filter((a) => !a.synthetic)
+    const merged = [...extraNonSynthetic]
     enrolledAsApps.forEach((ea) => {
       const idx = merged.findIndex((m) => m.id === ea.id)
       if (idx >= 0) {
@@ -139,7 +140,7 @@ export default function Cases() {
       }
     })
     return merged
-  }, [result.apps, comelecVoters, attendanceRecords, state.caseState])
+  }, [state.extraApps, comelecVoters, attendanceRecords, state.caseState])
 
   // Track cases currently animating out upon resolution
   const [resolvingIds, setResolvingIds] = useState({})
@@ -264,8 +265,8 @@ export default function Cases() {
 
   return (
     <div className="page">
-      <PageHead title="Investigation Cases (De La Salle Taft Avenue Sector)" feature="ERB Triage Dashboard | Manila Spatial Cluster Integration | Secure Audit Dossier">
-        Flagged voter registration applications and live biometric attendance anomalies become reviewable cases here. Directly connected to the De La Salle Taft Avenue Manila cluster radar. Only a human reviewer can record a final disposition.
+      <PageHead title="Investigation Cases" feature="DLSU Taft Sector | ERB Triage Dashboard">
+        Review priority cases, spatial anomalies, and intercepted flying voters. All final rulings require human administrator disposition.
       </PageHead>
       <SyntheticBanner />
       <div className="grid g4">

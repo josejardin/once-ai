@@ -3,7 +3,7 @@ import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { 
   IdCard, Search, UserPlus, CheckCircle2, Camera, 
   Upload, Shield, Building2, MapPin, Calendar, ArrowRight, Sparkles,
-  Trash2, RotateCcw, AlertCircle, ExternalLink, X
+  Trash2, RotateCcw, AlertCircle, ExternalLink, X, AlertOctagon, MessageSquareText
 } from 'lucide-react';
 import { getComelecVoters, registerComelecVoter, clearAllComelecVoters } from '../lib/api.js';
 import { calculateFaceAlignedMetrics, cropFaceCanvas } from '../lib/livenessCalculations.js';
@@ -56,6 +56,8 @@ export default function ComelecRegistry() {
 
   useEffect(() => {
     fetchVoters();
+    const timer = setInterval(fetchVoters, 2000);
+    return () => clearInterval(timer);
   }, []);
 
   async function handleClearAll() {
@@ -250,8 +252,8 @@ export default function ComelecRegistry() {
 
   return (
     <div className="page">
-      <PageHead title="COMELEC Central Voter Registry" feature="Live Mock Database | Republic Act 10173">
-        Official COMELEC Mock Voter ID issuance system. Enrolls genuine and synthetic citizen records, generates standardized Voter Identification Numbers (VIN), and indexes 512-D local facial vectors in RAM.
+      <PageHead title="COMELEC Central Voter Registry" feature="Voter ID Management | Sovereign Biometrics">
+        Official voter registry database with standardized Voter Identification Numbers (VIN) and local biometric facial vectors.
       </PageHead>
 
       {/* Top Controls Bar */}
@@ -277,19 +279,6 @@ export default function ComelecRegistry() {
             <Trash2 size={15} />
             <span>Clear All IDs (Reset DB)</span>
           </button>
-        </div>
-
-        <div className="row" style={{ gap: 8 }}>
-          <a
-            href="http://localhost:5173"
-            target="_blank"
-            rel="noreferrer"
-            className="btn sm"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
-          >
-            <ExternalLink size={13} />
-            <span>Open Standalone Polling Terminal (:5173)</span>
-          </a>
         </div>
       </div>
 
@@ -344,24 +333,32 @@ export default function ComelecRegistry() {
               }}
             >
               {/* ID Card Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 8, marginBottom: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#1d4ed8', color: '#fbbf24', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 900 }}>
-                    ★
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-                      Republic of the Philippines • COMELEC
+              {(() => {
+                const att = v.attendance;
+                const anomaly = att?.timing_anomaly || (att?.anomaly_flag && att.anomaly_flag !== 'NORMAL' ? { flag: att.anomaly_flag } : null);
+                const isBlocked = Boolean(v.registration_status?.includes('BLOCKED') || att?.status?.includes('BLOCKED'));
+                const hasIssue = Boolean(isBlocked || (anomaly?.flag && anomaly.flag !== 'NORMAL'));
+
+                return (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 8, marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#1d4ed8', color: '#fbbf24', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 900 }}>
+                          ★
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                            Republic of the Philippines • COMELEC
+                          </div>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--gold2)' }}>
+                            VOTER IDENTIFICATION CARD
+                          </div>
+                        </div>
+                      </div>
+                      <Badge tone={isBlocked ? 'high' : (anomaly?.flag && anomaly.flag !== 'NORMAL' ? 'mod' : (v.has_voted ? 'low' : 'info'))}>
+                        {isBlocked ? '🚨 INCIDENT BLOCKED' : (anomaly?.flag && anomaly.flag !== 'NORMAL' ? `⚠️ ${anomaly.flag}` : (v.has_voted ? '✓ VOTED' : (v.registration_status || 'ELIGIBLE')))}
+                      </Badge>
                     </div>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--gold2)' }}>
-                      VOTER IDENTIFICATION CARD
-                    </div>
-                  </div>
-                </div>
-                <Badge tone={v.registration_status?.includes('LOCKED') ? 'high' : 'low'}>
-                  {v.registration_status || 'ELIGIBLE'}
-                </Badge>
-              </div>
 
               {/* ID Card Body */}
               <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
@@ -410,6 +407,84 @@ export default function ComelecRegistry() {
                 </div>
               </div>
 
+              {/* Live Attendance & Timing Anomaly Strip */}
+              {v.attendance && v.attendance.status && v.attendance.status !== 'NOT_CHECKED_IN' && (
+                <div style={{ background: 'var(--panel2)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px', marginTop: 8, fontSize: 11 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 700, color: 'var(--text)' }}>
+                      Attendance: <b>{v.attendance.status}</b>
+                    </span>
+                    {v.attendance.duration && (
+                      <span style={{ color: '#0284c7', fontWeight: 700 }}>
+                        ⏱️ {v.attendance.duration}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)', fontSize: 10, marginTop: 3 }}>
+                    <span>Face IN: {v.attendance.face_in || '—'}</span>
+                    <span>Face OUT: {v.attendance.face_out || '—'}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Electoral Integrity Incident Banner */}
+              {(() => {
+                const att = v.attendance;
+                const anomaly = att?.timing_anomaly || (att?.anomaly_flag && att.anomaly_flag !== 'NORMAL' ? { flag: att.anomaly_flag } : null);
+                const isBlocked = Boolean(v.registration_status?.includes('BLOCKED') || att?.status?.includes('BLOCKED'));
+                const hasIssue = Boolean(isBlocked || (anomaly?.flag && anomaly.flag !== 'NORMAL'));
+
+                if (!hasIssue) return null;
+
+                return (
+                  <div style={{
+                    background: '#fef2f2',
+                    border: '1.5px solid #dc2626',
+                    borderRadius: 10,
+                    padding: '8px 12px',
+                    marginTop: 8,
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    color: '#991b1b'
+                  }}>
+                    <AlertOctagon size={18} color="#dc2626" style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 12, color: '#dc2626' }}>
+                        🚨 ELECTORAL FRAUD / INTEGRITY INCIDENT DETECTED!
+                      </div>
+                      <div style={{ fontSize: 11, color: '#7f1d1d', marginTop: 2, lineHeight: 1.4 }}>
+                        {anomaly?.reason || anomaly?.explanation || att?.status || 'Incident intercepted during biometric intake station verification.'}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                        <a 
+                          href={`#/cases?app=${v.voter_id}`}
+                          className="btn sm danger"
+                          style={{ background: '#dc2626', color: '#fff', textDecoration: 'none', padding: '3px 8px', fontSize: 10, borderRadius: 5, fontWeight: 700 }}
+                        >
+                          <span>View in Case Queue ➔</span>
+                        </a>
+                        <a 
+                          href="#/geo"
+                          className="btn sm"
+                          style={{ textDecoration: 'none', padding: '3px 8px', fontSize: 10, borderRadius: 5, fontWeight: 600 }}
+                        >
+                          <span>Locate on Map ➔</span>
+                        </a>
+                        <a 
+                          href={`#/chatbot?voter=${encodeURIComponent(v.name)}`}
+                          className="btn sm"
+                          style={{ textDecoration: 'none', padding: '3px 8px', fontSize: 10, borderRadius: 5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                        >
+                          <MessageSquareText size={10} />
+                          <span>Ask AI Chatbot ➔</span>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Card Footer: Local AI Proof */}
               <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span className="mono small muted" style={{ fontSize: 10 }}>
@@ -419,6 +494,9 @@ export default function ComelecRegistry() {
                   ✓ In-RAM Biometric Hash
                 </span>
               </div>
+                  </>
+                );
+              })()}
             </div>
           ))}
         </div>
@@ -515,87 +593,67 @@ export default function ComelecRegistry() {
                   </div>
                 </div>
 
-                {/* Photo Capture Section */}
+                {/* Photo Upload Section (No Webcam Needed - Direct File Upload from Past Voter Records) */}
                 <div className="field">
-                  <label>Official Voter's ID Photo</label>
-
-                  {isCapturing ? (
-                    <div style={{ background: 'var(--panel2)', borderRadius: 14, padding: 12, textAlign: 'center' }}>
-                      <div style={{ position: 'relative', width: 180, height: 180, margin: '0 auto 10px', borderRadius: '50%', overflow: 'hidden', border: enrollFaceLocked ? '3px solid var(--low)' : '3px dashed var(--mod)', background: '#000' }}>
-                        <video
-                          ref={videoRef}
-                          playsInline
-                          autoPlay
-                          muted
-                          style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
-                        />
-                        <div style={{ position: 'absolute', bottom: 4, left: 0, right: 0 }}>
-                          <span className={`badge ${enrollFaceLocked ? 'low' : 'mod'}`} style={{ fontSize: 9 }}>
-                            {enrollFaceLocked ? '✓ Face Tracked (60 FPS)' : 'Align Face in Circle'}
-                          </span>
+                  <label htmlFor="c-photo-file" style={{ fontWeight: 700 }}>Official Citizen ID Photo (2x2 / Portrait)</label>
+                  
+                  {enrollPhoto ? (
+                    <div style={{ display: 'flex', gap: 14, alignItems: 'center', background: 'var(--panel2)', padding: 12, borderRadius: 12, border: '1.5px solid var(--border)' }}>
+                      <img 
+                        src={enrollPhoto} 
+                        alt="Uploaded ID" 
+                        style={{ width: 64, height: 64, borderRadius: 8, objectFit: 'cover', border: '2px solid #22c55e' }} 
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, color: '#22c55e', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <CheckCircle2 size={14} />
+                          <span>Official ID Photo Attached</span>
                         </div>
-                      </div>
-
-                      <div className="row" style={{ justifyContent: 'center', gap: 6 }}>
+                        <div className="small muted" style={{ fontSize: 11, marginTop: 2 }}>
+                          Standardized portrait indexed into RAM for biometrics matching.
+                        </div>
                         <button
                           type="button"
-                          className="btn primary"
-                          onClick={snapEnrollPhoto}
+                          className="chip small"
+                          style={{ marginTop: 6, cursor: 'pointer', color: 'var(--high)', fontWeight: 600 }}
+                          onClick={() => setEnrollPhoto(null)}
                         >
-                          <Camera size={14} />
-                          <span>Capture Standardized Portrait</span>
+                          Change / Upload Different Photo
                         </button>
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={stopEnrollCamera}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : enrollPhoto ? (
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'var(--panel2)', padding: 10, borderRadius: 12 }}>
-                      <img src={enrollPhoto} alt="Captured" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover', border: '1.5px solid var(--border)' }} />
-                      <div>
-                        <Badge tone="low">✓ Portrait Ready</Badge>
-                        <div>
-                          <button
-                            type="button"
-                            className="chip small"
-                            style={{ marginTop: 4, cursor: 'pointer' }}
-                            onClick={() => setEnrollPhoto(null)}
-                          >
-                            Retake / Change
-                          </button>
-                        </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="row" style={{ gap: 8 }}>
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={startEnrollCamera}
-                        style={{ flex: 1, justifyContent: 'center' }}
-                      >
-                        <Camera size={15} />
-                        <span>Take Selfie with Webcam</span>
-                      </button>
-                      <label
-                        className="btn"
-                        style={{ flex: 1, justifyContent: 'center', cursor: 'pointer' }}
-                      >
-                        <Upload size={15} />
-                        <span>Upload Photo</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFileUpload}
-                          style={{ display: 'none' }}
-                        />
-                      </label>
-                    </div>
+                    <label
+                      htmlFor="c-photo-file"
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '24px 16px',
+                        borderRadius: 12,
+                        border: '2px dashed var(--border)',
+                        background: 'var(--panel2)',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        transition: 'border-color 0.2s ease'
+                      }}
+                    >
+                      <Upload size={28} color="#0284c7" style={{ marginBottom: 8 }} />
+                      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>
+                        Click to Upload Citizen ID Photo
+                      </div>
+                      <div className="small muted" style={{ fontSize: 11, marginTop: 4 }}>
+                        Upload official COMELEC 2x2 photo or passport image (JPG, PNG). Zero webcam required.
+                      </div>
+                      <input
+                        id="c-photo-file"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileUpload}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
                   )}
                 </div>
 

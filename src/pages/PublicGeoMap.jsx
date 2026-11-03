@@ -1,15 +1,110 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useApp } from '../store.jsx'
 import MapView from '../components/MapView.jsx'
 import { Badge, Card } from '../components/ui.jsx'
 import { ShieldCheck, Radio, Eye, ExternalLink, X, Info, Share2, Layers, CheckCircle2 } from 'lucide-react'
 import { LGU, BARANGAYS } from '../lib/gazetteer.js'
+import { getComelecVoters, getAllAttendance } from '../lib/api.js'
 
 export default function PublicGeoMap() {
   const { result, state } = useApp()
   const [layers, setLayers] = useState({ apps: true, clusters: true, density: true, buildings: true, barangays: true })
   const [selId, setSelId] = useState('CL-0089')
   const [copied, setCopied] = useState(false)
+
+  // Live COMELEC Registry & Attendance Records for Real-Time Sync with Admin DBSCAN Map
+  const [comelecVoters, setComelecVoters] = useState([])
+  const [attendanceRecords, setAttendanceRecords] = useState([])
+
+  useEffect(() => {
+    async function fetchLiveRecords() {
+      try {
+        const [vData, aData] = await Promise.allSettled([
+          getComelecVoters(),
+          getAllAttendance()
+        ])
+        if (vData.status === 'fulfilled' && vData.value?.voters) {
+          setComelecVoters(vData.value.voters)
+        }
+        if (aData.status === 'fulfilled' && aData.value?.attendance) {
+          setAttendanceRecords(aData.value.attendance)
+        }
+      } catch (e) {
+        console.warn('Live public map sync notice:', e)
+      }
+    }
+    fetchLiveRecords()
+    const timer = setInterval(fetchLiveRecords, 2000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // Unified Spatial Pool for Public Stream
+  const allGeoApps = useMemo(() => {
+    const attMap = {}
+    attendanceRecords.forEach((att) => { attMap[att.voter_id] = att })
+
+    const enrolledAsApps = comelecVoters.map((v) => {
+      const att = attMap[v.voter_id] || v.attendance
+      const anomaly = att?.timing_anomaly || (att?.anomaly_flag && att.anomaly_flag !== 'NORMAL' ? { flag: att.anomaly_flag, reason: 'Pacing outlier detected' } : null)
+      const hasIssue = !!(anomaly?.flag && anomaly.flag !== 'NORMAL') || v.registration_status?.includes('BLOCKED') || v.registration_status?.includes('LOCKED')
+      const cs = state.caseState[v.voter_id]
+      const flagName = cs?.suspectedFlag || anomaly?.flag || (hasIssue ? 'ANOMALY_DETECTED' : null)
+
+      return {
+        id: v.voter_id,
+        vin: v.vin,
+        name: v.name,
+        age: 26,
+        type: 'COMELEC Enrolled Citizen',
+        submittedAt: att?.face_in_timestamp || v.created_at || new Date().toISOString(),
+        submittedVia: 'Biometric Intake Station',
+        batchId: null,
+        supportingDoc: { type: 'COMELEC ID', barangayId: 'MAL' },
+        yearsAtAddress: 4,
+        synthetic: false,
+        photo_base64: v.photo_base64 || cs?.photo_base64 || null,
+        biometrics: {
+          enrolled: true,
+          voter_id: v.voter_id,
+          vin: v.vin,
+          hash: v.biometric_hash,
+          status: v.registration_status
+        },
+        addr: {
+          original: v.barangay || v.precinct_id || 'Taft Ave, Malate, Manila',
+          normalized: v.barangay || v.precinct_id || 'Taft Ave, Malate, Manila',
+          status: 'Resolved',
+          precision: 'street',
+          precisionBasis: 'Taft Ave, Malate (DLSU Ward)',
+          confidence: 1.0,
+          warnings: [],
+          components: { barangay: 'Maligaya (DLSU Taft)' },
+          coords: [14.5648, 120.9932]
+        },
+        label: hasIssue ? 'High' : (cs ? 'Moderate' : 'Low'),
+        score: hasIssue ? 95 : (cs ? 45 : 20),
+        issue: flagName,
+        timing_anomaly: anomaly,
+        duration_formatted: att?.duration_formatted || att?.duration || cs?.duration,
+        attendance: att,
+        isComelecEnrolled: true,
+        document: null,
+        related: [],
+        cluster: null
+      }
+    })
+
+    const merged = [...result.apps]
+    enrolledAsApps.forEach((ea) => {
+      const idx = merged.findIndex((m) => m.id === ea.id)
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...ea, photo_base64: ea.photo_base64 || merged[idx].photo_base64 }
+      } else {
+        merged.unshift(ea)
+      }
+    })
+    return merged
+  }, [result.apps, comelecVoters, attendanceRecords, state.caseState])
 
   const sel = result.clusters.find((c) => c.id === selId)
   const tog = (k) => setLayers((l) => ({ ...l, [k]: !l[k] }))
@@ -68,7 +163,7 @@ export default function PublicGeoMap() {
               </span>
             </div>
             <div style={{ color: '#94a3b8', fontSize: 12 }}>
-              Sovereign Geospatial Anomaly Radar • Lalamove-Style Transparency Tracking Link
+              Sovereign Geospatial Anomaly Radar • Live Public Transparency Stream
             </div>
           </div>
         </div>
@@ -134,7 +229,7 @@ export default function PublicGeoMap() {
           <div style={{ width: 1, height: 26, background: 'var(--border)' }} />
           <div>
             <span style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>Screened Registrations</span>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{result.apps.length} Verified Entries</div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{allGeoApps.length} Verified Entries</div>
           </div>
           <div style={{ width: 1, height: 26, background: 'var(--border)' }} />
           <div>
@@ -164,7 +259,7 @@ export default function PublicGeoMap() {
       <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, height: 'calc(100vh - 130px)', position: 'relative' }}>
           <MapView 
-            apps={result.apps} 
+            apps={allGeoApps} 
             clusters={result.clusters} 
             layers={layers} 
             selectedCluster={selId} 

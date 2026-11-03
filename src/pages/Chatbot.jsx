@@ -52,7 +52,25 @@ export default function Chatbot() {
       }
     }
     fetchVoters()
+    const timer = setInterval(fetchVoters, 2000)
+    return () => clearInterval(timer)
   }, [])
+
+  // Auto-respond when routed via #/chatbot?voter=Name
+  useEffect(() => {
+    const parseUrlQuery = () => {
+      const hashStr = window.location.hash || ''
+      const qIdx = hashStr.indexOf('?')
+      if (qIdx >= 0) {
+        const params = new URLSearchParams(hashStr.slice(qIdx))
+        const vParam = params.get('voter')
+        if (vParam) {
+          handleSend(`Summarize voter ${decodeURIComponent(vParam)}`)
+        }
+      }
+    }
+    parseUrlQuery()
+  }, [comelecVoters.length])
 
   const handleSend = async (queryText) => {
     const text = (queryText || input).trim()
@@ -96,13 +114,40 @@ export default function Chatbot() {
     // 1. SPECIFIC VOTER SUMMARY WITH PHOTOS (ID VS LIVE FACE IN / OUT)
     // --------------------------------------------------------------------------
     if (low.includes('summarize voter') || low.includes('votee') || low.includes('tell me about voter') || low.includes('carlos') || low.includes('maria') || low.includes('voter-')) {
-      // Find matching voter
-      let matchedVoter = null
-      for (const v of comelecVoters) {
+      // Find matching voter from live registry
+      let currentVoters = comelecVoters;
+      if (!currentVoters || currentVoters.length === 0) {
+        try {
+          const fresh = await getComelecVoters();
+          if (fresh?.voters) {
+            currentVoters = fresh.voters;
+            setComelecVoters(fresh.voters);
+          }
+        } catch (e) {}
+      }
+
+      let matchedVoter = null;
+      for (const v of (currentVoters || [])) {
         if (low.includes(v.name.toLowerCase()) || low.includes(v.voter_id.toLowerCase()) || low.includes(v.vin.toLowerCase())) {
-          matchedVoter = v
-          break
+          matchedVoter = v;
+          break;
         }
+      }
+
+      // If still not matched, check token/words
+      if (!matchedVoter && currentVoters && currentVoters.length > 0) {
+        const words = low.replace(/summarize|voter|tell|me|about/g, '').trim().split(/\s+/).filter(Boolean);
+        for (const v of currentVoters) {
+          if (words.some(w => w.length > 1 && v.name.toLowerCase().includes(w))) {
+            matchedVoter = v;
+            break;
+          }
+        }
+      }
+
+      // If general query or no specific match, default to most recently registered voter
+      if (!matchedVoter && currentVoters && currentVoters.length > 0) {
+        matchedVoter = currentVoters[currentVoters.length - 1];
       }
 
       // Try fetching live dossier from backend API
@@ -146,32 +191,41 @@ export default function Chatbot() {
           id_match_confidence: 98.7
         }
       } else if (!liveDossier && matchedVoter) {
+        const att = matchedVoter.attendance || {}
+        const anom = att.timing_anomaly || matchedVoter.timing_anomaly
+        const isFlagged = Boolean(
+          (anom && anom.flag && anom.flag !== 'NORMAL') ||
+          matchedVoter.registration_status?.includes('FLAGGED') ||
+          matchedVoter.registration_status?.includes('SUSPICIOUS') ||
+          matchedVoter.registration_status?.includes('BLOCKED')
+        )
+
         liveDossier = {
           voter_id: matchedVoter.voter_id,
           name: matchedVoter.name,
           vin: matchedVoter.vin,
           precinct_id: matchedVoter.precinct_id,
           barangay: matchedVoter.barangay,
-          birthdate: matchedVoter.birthdate,
+          birthdate: matchedVoter.birthdate || '2000-01-01',
           civil_status: matchedVoter.civil_status || 'Single',
           citizenship: 'Filipino',
-          registration_status: matchedVoter.has_voted ? 'BALLOT CAST (LOCKED)' : 'REGISTERED / ELIGIBLE',
-          has_voted: matchedVoter.has_voted,
-          ballot_serial: matchedVoter.attendance?.status ? 'BALLOT-CEF1-2B1089A' : 'NOT YET ISSUED',
-          photo_id_base64: matchedVoter.photo_base64,
-          photo_in_base64: matchedVoter.photo_base64,
-          photo_out_base64: matchedVoter.photo_base64,
-          face_in_timestamp: matchedVoter.attendance?.face_in || '2026-11-03 10:20:15',
-          face_out_timestamp: matchedVoter.attendance?.face_out || '2026-11-03 10:23:30',
-          duration_seconds: 195,
-          duration_formatted: matchedVoter.attendance?.duration || '3m 15s',
-          timing_anomaly: {
-            flag: matchedVoter.attendance?.anomaly_flag || 'NORMAL',
-            severity: matchedVoter.attendance?.anomaly_flag === 'RUSH_ANOMALY' ? 'HIGH' : 'NONE',
-            explanation: matchedVoter.attendance?.anomaly_flag === 'RUSH_ANOMALY'
-              ? 'SUSPICIOUS RAPID COMPLETION: Ballot fed in 25s (<45s threshold). Flagged for unshaded ballot or proxy rush.'
-              : 'NORMAL PACED COMPLETION: Consistent with learned precinct baseline (195s ± 21s).'
-          },
+          registration_status: isFlagged
+            ? (matchedVoter.registration_status || `SUSPICIOUS (${anom?.flag || 'ANOMALY'})`)
+            : (matchedVoter.has_voted ? 'BALLOT CAST (LOCKED)' : (att.face_in ? 'IN_BOOTH (VOTING)' : 'REGISTERED / ELIGIBLE')),
+          has_voted: Boolean(matchedVoter.has_voted || att.face_out),
+          ballot_serial: att.ballot_serial || (att.face_in ? 'BALLOT-CEF1-2B1089A' : 'NOT YET ISSUED'),
+          photo_id_base64: matchedVoter.photo_id_base64 || matchedVoter.photo_base64,
+          photo_in_base64: att.photo_in_base64 || matchedVoter.photo_in_base64 || null,
+          photo_out_base64: att.photo_out_base64 || matchedVoter.photo_out_base64 || null,
+          face_in_timestamp: att.face_in || matchedVoter.face_in_timestamp || null,
+          face_out_timestamp: att.face_out || matchedVoter.face_out_timestamp || null,
+          duration_seconds: anom?.duration_seconds,
+          duration_formatted: att.duration || matchedVoter.duration_formatted || null,
+          timing_anomaly: anom || (att.face_out ? {
+            flag: 'NORMAL',
+            severity: 'NONE',
+            explanation: 'Voter completed ballot pacing within nominal learned baseline.'
+          } : null),
           id_match_confidence: 99.1
         }
       }
@@ -260,7 +314,7 @@ export default function Chatbot() {
           `1. **100% Local In-Memory Inference:** OpenCV and Facenet512 decode images strictly in RAM (` + '`' + `cv2.imdecode` + '`' + `). Zero temporary files are written to disk or sent to external cloud APIs.\n` +
           `2. **Cancelable Biometrics ($Q$-Matrix Projection):** Vectors are transformed via a secret orthogonal projection matrix ($Q^T Q = I$). If leaked, templates cannot be inverted to reconstruct the citizen's original face.\n` +
           `3. **Post-Election Crypto-Shredding:** Revoking ` + '`' + `ELECTION_SECRET_SALT` + '`' + ` immediately renders all stored vectors mathematically useless, guaranteeing zero lingering biometric retention.\n` +
-          `4. **Strict Separation:** The public Lalamove-style tracking stream only shows anonymized spatial clusters with zero citizen PII.`
+          `4. **Strict Separation:** The public live tracking stream only shows anonymized spatial clusters with zero citizen PII.`
       }
     }
 
@@ -417,28 +471,41 @@ export default function Chatbot() {
                           {/* 2. Live Face IN (Check-In) */}
                           <div style={{ textAlign: 'center' }}>
                             <div style={{ width: '100%', height: 145, borderRadius: 10, overflow: 'hidden', border: '2px solid #22c55e', background: '#090d16', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <img 
-                                src={m.voterDossier.photo_in_base64 || m.voterDossier.photo_id_base64} 
-                                alt="Live Face IN" 
-                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                              />
+                              {m.voterDossier.photo_in_base64 ? (
+                                <img 
+                                  src={m.voterDossier.photo_in_base64} 
+                                  alt="Live Face IN" 
+                                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                />
+                              ) : (
+                                <div style={{ color: 'var(--muted)', fontSize: 11, padding: 8 }}>
+                                  ⏳ Not yet checked in
+                                </div>
+                              )}
                             </div>
                             <span className="chip small" style={{ fontSize: 10, fontWeight: 700, color: '#22c55e' }}>
-                              2. Live Face IN
+                              2. Live Face IN {m.voterDossier.face_in_timestamp ? `(${m.voterDossier.face_in_timestamp.split(' ')[1] || m.voterDossier.face_in_timestamp})` : '(Pending)'}
                             </span>
                           </div>
 
                           {/* 3. Live Face OUT (Check-Out) */}
                           <div style={{ textAlign: 'center' }}>
                             <div style={{ width: '100%', height: 145, borderRadius: 10, overflow: 'hidden', border: '2px solid #38bdf8', background: '#090d16', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <img 
-                                src={m.voterDossier.photo_out_base64 || m.voterDossier.photo_id_base64} 
-                                alt="Live Face OUT" 
-                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                              />
+                              {m.voterDossier.photo_out_base64 ? (
+                                <img 
+                                  src={m.voterDossier.photo_out_base64} 
+                                  alt="Live Face OUT" 
+                                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                />
+                              ) : (
+                                <div style={{ color: 'var(--muted)', fontSize: 11, padding: 8 }}>
+                                  ⏳ Pending Exit
+                                  <div style={{ fontSize: 9.5, opacity: 0.8, marginTop: 2 }}>Citizen in booth</div>
+                                </div>
+                              )}
                             </div>
                             <span className="chip small" style={{ fontSize: 10, fontWeight: 700, color: '#38bdf8' }}>
-                              3. Live Face OUT
+                              3. Live Face OUT {m.voterDossier.face_out_timestamp ? `(${m.voterDossier.face_out_timestamp.split(' ')[1] || m.voterDossier.face_out_timestamp})` : '(Pending)'}
                             </span>
                           </div>
                         </div>
@@ -453,16 +520,20 @@ export default function Chatbot() {
                           </div>
                           <div>
                             <span className="muted small">Face IN Check-In</span>
-                            <div className="mono" style={{ fontWeight: 700 }}>{m.voterDossier.face_in_timestamp || '09:14:22'}</div>
+                            <div className="mono" style={{ fontWeight: 700, color: m.voterDossier.face_in_timestamp ? '#22c55e' : 'var(--muted)' }}>
+                              {m.voterDossier.face_in_timestamp || 'Pending Check-In'}
+                            </div>
                           </div>
                           <div>
                             <span className="muted small">Face OUT Check-Out</span>
-                            <div className="mono" style={{ fontWeight: 700 }}>{m.voterDossier.face_out_timestamp || '09:17:45'}</div>
+                            <div className="mono" style={{ fontWeight: 700, color: m.voterDossier.face_out_timestamp ? '#38bdf8' : '#fbbf24' }}>
+                              {m.voterDossier.face_out_timestamp || (m.voterDossier.face_in_timestamp ? '⏳ Voting in booth' : 'Pending')}
+                            </div>
                           </div>
                           <div>
                             <span className="muted small">Total Voting Duration</span>
-                            <div style={{ fontWeight: 800, color: '#38bdf8' }}>
-                              {m.voterDossier.duration_formatted || '3m 23s'}
+                            <div style={{ fontWeight: 800, color: m.voterDossier.timing_anomaly?.flag && m.voterDossier.timing_anomaly.flag !== 'NORMAL' ? '#f43f5e' : '#38bdf8' }}>
+                              {m.voterDossier.duration_formatted || (m.voterDossier.face_in_timestamp ? 'In progress...' : 'N/A')}
                             </div>
                           </div>
                         </div>
@@ -472,27 +543,28 @@ export default function Chatbot() {
                       <div style={{ 
                         padding: '10px 14px', 
                         borderRadius: 10, 
-                        background: m.voterDossier.timing_anomaly?.flag === 'NORMAL' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.15)',
-                        border: m.voterDossier.timing_anomaly?.flag === 'NORMAL' ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)'
+                        background: (!m.voterDossier.timing_anomaly || m.voterDossier.timing_anomaly?.flag === 'NORMAL') ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.18)',
+                        border: (!m.voterDossier.timing_anomaly || m.voterDossier.timing_anomaly?.flag === 'NORMAL') ? '1px solid rgba(34, 197, 94, 0.3)' : '1.5px solid rgba(239, 68, 68, 0.5)'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                           <span style={{ 
                             fontWeight: 800, 
                             fontSize: 12,
-                            color: m.voterDossier.timing_anomaly?.flag === 'NORMAL' ? '#22c55e' : '#f43f5e',
+                            color: (!m.voterDossier.timing_anomaly || m.voterDossier.timing_anomaly?.flag === 'NORMAL') ? '#22c55e' : '#f43f5e',
                             display: 'flex',
                             alignItems: 'center',
                             gap: 6
                           }}>
-                            {m.voterDossier.timing_anomaly?.flag === 'NORMAL' ? <CheckCircle2 size={14} /> : <AlertOctagon size={14} />}
-                            AI Pacing Verdict: {m.voterDossier.timing_anomaly?.flag || 'NORMAL'}
+                            {(!m.voterDossier.timing_anomaly || m.voterDossier.timing_anomaly?.flag === 'NORMAL') ? <CheckCircle2 size={14} /> : <AlertOctagon size={14} />}
+                            {m.voterDossier.timing_anomaly?.flag && m.voterDossier.timing_anomaly.flag !== 'NORMAL' ? '🚨 SUSPICIOUS PACING ANOMALY: ' : 'AI Pacing Verdict: '}
+                            {m.voterDossier.timing_anomaly?.flag || 'NORMAL (PENDING COMPLETION)'}
                           </span>
                           <span className="mono small" style={{ fontSize: 11 }}>
                             Match: <b>{m.voterDossier.id_match_confidence}%</b> (Facenet512)
                           </span>
                         </div>
                         <div style={{ fontSize: 11.5, color: 'var(--text)', lineHeight: 1.4 }}>
-                          {m.voterDossier.timing_anomaly?.explanation || 'Completed within nominal learned statistical parameters.'}
+                          {m.voterDossier.timing_anomaly?.explanation || 'Awaiting Face OUT exit scan to complete statistical pacing anomaly evaluation.'}
                         </div>
                       </div>
                     </div>

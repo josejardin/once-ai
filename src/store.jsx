@@ -85,6 +85,23 @@ function reducer(state, a) {
         audit: log({ action: 'CLEAR_MOCK_TESTING', target: 'all', detail: 'Purged all mock testing applications and test cases from investigation queue.' })
       }
     }
+    case 'purgeAllStorage': {
+      try {
+        localStorage.removeItem(KEY)
+        localStorage.clear()
+        sessionStorage.clear()
+      } catch (e) {}
+      return {
+        ...initial,
+        role: 'admin',
+        theme: state.theme,
+        extraApps: [],
+        caseState: {},
+        indicatorReview: {},
+        clusterReview: {},
+        audit: []
+      }
+    }
     case 'reset': return { ...initial, role: 'admin', theme: state.theme, audit: [makeAudit({ ...initial, role: 'admin' }, { action: 'DEMO_RESET', target: 'all', detail: 'Demo data reset to the synthetic seed state' })] }
     default: return state
   }

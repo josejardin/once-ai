@@ -103,15 +103,6 @@ export default function Screening() {
               <div className="small muted">Log-scaled counts. Nearly all pairs are unrelated; the right-most bin holds the unusually similar pairs.</div>
             </Card>
           </div>
-          {pair && (
-            <Card title="Visual comparison" sub={`${pair.a} vs ${pair.b} - similarity ${pair.sim.toFixed(3)} (simulated)`}>
-              <div className="compare"><HandwritingSample app={pa} /><HandwritingSample app={pb} /></div>
-              <div className="row" style={{ marginTop: 10 }}>
-                <button className="btn" onClick={() => openApp(pair.a)}>Open dossier {pair.a}</button><button className="btn" onClick={() => openApp(pair.b)}>Open dossier {pair.b}</button>
-                <span className="small muted">Review status of each form is set in its dossier (Handwriting indicator).</span>
-              </div>
-            </Card>
-          )}
         </>
       )}
 

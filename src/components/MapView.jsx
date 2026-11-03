@@ -63,8 +63,10 @@ export default function MapView({ apps, clusters, layers, selectedCluster, onSel
     if (layers.apps) {
       apps.forEach((a) => {
         if (!a.addr.coords || !['building', 'sitio', 'landmark', 'street', 'purok'].includes(a.addr.precision)) return
-        const m = L.circleMarker(a.addr.coords, { radius: a.label === 'High' ? 6 : 4.5, color: '#ffffff', weight: 1, fillColor: a.synthetic ? LABEL_COLOR[a.label].replace(/var\(--(\w+)\)/, (_, k) => ({ low: '#1b9a68', mod: '#d9820f', high: '#c0272d' }[k])) : '#fff', fillOpacity: 0.95 })
-        m.bindTooltip(`${a.id} - ${a.name || 'Applicant'}<br/>${a.addr.components?.barangay || '?'}<br/>${a.label} priority, score ${a.score}<br/><i>${a.addr.precisionBasis}</i>`)
+        const labelColor = LABEL_COLOR[a.label] || 'var(--high)'
+        const fillColor = a.synthetic ? labelColor.replace(/var\(--(\w+)\)/, (_, k) => ({ low: '#1b9a68', mod: '#d9820f', high: '#c0272d' }[k] || '#c0272d')) : '#fff'
+        const m = L.circleMarker(a.addr.coords, { radius: a.label === 'High' ? 6 : 4.5, color: '#ffffff', weight: 1, fillColor, fillOpacity: 0.95 })
+        m.bindTooltip(`${a.id} - [ANONYMOUS CITIZEN]<br/>${a.addr.components?.barangay || '?'}<br/>${a.label} priority, score ${a.score}<br/><i>${a.addr.precisionBasis}</i>`)
         m.on('click', () => onSelectApp && onSelectApp(a.id))
         m.addTo(g)
       })
@@ -94,7 +96,7 @@ export default function MapView({ apps, clusters, layers, selectedCluster, onSel
           icon: L.divIcon({ className: '', html: iconHtml })
         })
 
-        m.bindTooltip(`<b>🚨 ACTIVE ANOMALY INCIDENT: ${flagName}</b><br/>Citizen: ${a.name} (${a.id})<br/>Location: ${a.addr.normalized || 'DLSU Taft Sector'}<br/>${a.timing_anomaly?.reason || 'Suspected biometric or duration anomaly'}<br/><i>Click to open case dossier</i>`)
+        m.bindTooltip(`<b>🚨 ACTIVE ANOMALY INCIDENT: ${flagName}</b><br/>Citizen: [ANONYMOUS / REDACTED] (${a.id})<br/>Location: ${a.addr.normalized || 'DLSU Taft Sector'}<br/>${a.timing_anomaly?.reason || 'Suspected biometric or duration anomaly'}<br/><i>Click to open case dossier</i>`)
         m.on('click', () => {
           if (onSelectApp) onSelectApp(a.id)
         })

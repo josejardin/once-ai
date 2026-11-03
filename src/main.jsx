@@ -8,9 +8,12 @@ import '@fontsource/montserrat/800.css'
 import './styles.css'
 import App from './App.jsx'
 import { AppProvider } from './store.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 
 createRoot(document.getElementById('root')).render(
-  <AppProvider>
-    <App />
-  </AppProvider>,
+  <ErrorBoundary>
+    <AppProvider>
+      <App />
+    </AppProvider>
+  </ErrorBoundary>,
 )

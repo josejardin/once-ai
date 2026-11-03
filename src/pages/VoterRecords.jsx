@@ -231,7 +231,6 @@ export default function VoterRecords() {
               <tr>
                 <th>Voter / Record ID</th>
                 <th>Citizen Name</th>
-                <th>Origin / Type</th>
                 <th>Declared Address / Precinct</th>
                 <th>Biometrics & Issue Status</th>
                 <th>Priority</th>
@@ -259,7 +258,6 @@ export default function VoterRecords() {
                       </div>
                     </div>
                   </td>
-                  <td className="small">{a.type || 'Application'}</td>
                   <td>
                     <div className="small">{a.addr.normalized}</div>
                     <div className="mono small muted" style={{ fontSize: 11 }}>{a.addr.original}</div>

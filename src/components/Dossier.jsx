@@ -189,8 +189,8 @@ export default function Dossier({ appId, appData, inline }) {
       <div className="sect"><h3>Handwriting similarity <SimBadge>Simulated embedding comparator</SimBadge></h3>
         {app.document ? (
           <div className="compare">
-            <HandwritingSample app={app} caption={`${app.id} (this form)`} />
-            {app.related[0] ? <HandwritingSample app={result.byId[app.related[0].id]} caption={`${app.related[0].id} - similarity ${app.related[0].sim}`} /> : <div className="muted small">No related form above the similarity threshold.</div>}
+            <HandwritingSample app={app} caption={`${app.id} (this form)`} customImage="/specimen_a.png" />
+            {app.related[0] ? <HandwritingSample app={result.byId[app.related[0].id]} caption={`${app.related[0].id} - similarity ${app.related[0].sim}`} customImage="/specimen_b.png" /> : <div className="muted small">No related form above the similarity threshold.</div>}
           </div>
         ) : <div className="muted small">No scanned form on file.</div>}
         {app.related.length > 0 && <div className="row small" style={{ marginTop: 6 }}><span className="muted">Related applications:</span>{app.related.map((r) => <button key={r.id} className="chip mono" onClick={() => openApp(r.id)}>{r.id} ({r.sim})</button>)}</div>}

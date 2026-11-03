@@ -149,16 +149,10 @@ export default function Geo() {
     <div className="page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <PageHead title="Geographic Analysis (De La Salle Taft Avenue Sector)" feature="Boundary Validation | Spatial Anomaly Radar | DLSU Taft & Nearby Manila Barangays">
-            Geographic boundary validation, residency & location consistency, spatial anomaly detection (DBSCAN), and registration transfer patterns centered around De La Salle University, Taft Avenue, Manila.
+          <PageHead title="Geographic Analysis" feature="DLSU Taft Sector | Spatial Radar">
+            Live geospatial clustering (DBSCAN), residency validation, and incident radar for De La Salle Taft Avenue and nearby Manila barangays.
           </PageHead>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: -8, marginBottom: 12 }}>
-            <span className="chip" style={{ background: 'rgba(21, 128, 61, 0.1)', color: '#15803d', border: '1px solid rgba(21, 128, 61, 0.3)', fontWeight: 700 }}>
-              <MapPin size={13} style={{ verticalAlign: -1, marginRight: 4 }} />
-              Target Area: {LGU.municipality} ({LGU.district})
-            </span>
-            <span className="muted small">High-density urban barangays around DLSU Taft Avenue</span>
-          </div>
+
         </div>
         
         {/* Lalamove-style Share Live Public Link Button */}
@@ -169,7 +163,7 @@ export default function Geo() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', fontWeight: 700 }}
         >
           <Share2 size={16} />
-          <span>Share Live Public Stream (Lalamove Style)</span>
+          <span>Share Live Public Stream</span>
         </button>
       </div>
 
@@ -254,7 +248,7 @@ export default function Geo() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span className="mono" style={{ fontWeight: 800 }}>{a.id}</span>
-                        <span style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</span>
+                        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--muted)' }}>[Anonymous Citizen]</span>
                       </div>
                       <Badge tone="high">{a.issue || a.timing_anomaly?.flag || 'ANOMALY'}</Badge>
                     </div>
@@ -354,7 +348,7 @@ export default function Geo() {
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Share Live Public Oversight Stream</h3>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>Lalamove-Style Live Transparency Tracking</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>Live Public Transparency Tracking</div>
                 </div>
               </div>
               <button className="btn sm" onClick={() => setShowShareModal(false)}>
@@ -363,7 +357,7 @@ export default function Geo() {
             </div>
 
             <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0, color: 'var(--text)' }}>
-              Like an active Lalamove delivery tracking link, this embedded public URL allows poll watchdogs, accredited citizens, and press observers to track the live geospatial status and detected clusters in real-time without administrative privileges. Individual PII remains completely protected.
+              This shareable transparency tracking URL allows poll watchdogs, accredited citizens, and press observers to monitor live geospatial status and detected clusters in real-time without administrative privileges. Individual PII remains completely protected.
             </p>
 
             {/* Direct Share Link */}
