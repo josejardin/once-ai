@@ -7,14 +7,14 @@ export function HandwritingSample({ app, caption }) {
   const s = strokesFromEmbedding(app.document.embedding)
   return (
     <figure style={{ margin: 0 }}>
-      <div 
-        className="sheet" 
-        style={{ 
-          position: 'relative', 
-          overflow: 'hidden', 
-          backgroundColor: '#ffffff', 
-          border: '1.5px solid #e2e8f0', 
-          borderRadius: 8, 
+      <div
+        className="sheet"
+        style={{
+          position: 'relative',
+          overflow: 'hidden',
+          backgroundColor: '#ffffff',
+          border: '1.5px solid #e2e8f0',
+          borderRadius: 8,
           padding: '14px 18px',
           boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
           display: 'flex',
@@ -23,22 +23,24 @@ export function HandwritingSample({ app, caption }) {
           minHeight: 120
         }}
       >
-        <svg 
-          viewBox={`0 0 ${s.width} ${s.height}`} 
+        <svg
+          viewBox={`0 0 ${s.width} ${s.height}`}
           style={{ width: '100%', maxWidth: 270, height: 'auto', display: 'block' }}
-          role="img" 
+          role="img"
           aria-label={`Cursive pldt handwriting sample for ${app.id}`}
         >
-          <g transform={s.transform}>
-            {s.paths.map((d, i) => (
-              <path 
-                key={i} 
-                d={d} 
-                fill="#000000" 
-                fillRule="evenodd" 
-              />
-            ))}
-          </g>
+          {s.strokes.map((d, i) => (
+            <path
+              key={i}
+              d={d}
+              fill="none"
+              stroke="#1e293b"
+              strokeWidth={s.pressure}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.88"
+            />
+          ))}
         </svg>
       </div>
       <figcaption className="small muted" style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
