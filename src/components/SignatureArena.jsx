@@ -40,6 +40,10 @@ const PRESET_PATHS = {
     "M 180 115 Q 220 90 240 120",
     "M 250 80 L 270 130 L 290 85 L 320 120",
     "M 70 140 L 330 140"
+  ],
+  // Single straight line / lazy mark
+  line: [
+    "M 70 100 L 390 100"
   ]
 }
 
@@ -176,6 +180,14 @@ export default function SignatureArena() {
     // Draw Maria Santos's signature while claiming to be Juan Dela Cruz
     const otherPaths = selectedVoterId === 'VTR-2089' ? PRESET_PATHS.juan : PRESET_PATHS.maria
     drawPathsOnCanvas(canvas, otherPaths)
+    padRef.current?.loadFromDataURL(canvas.toDataURL())
+    evaluateSignature(canvas, false)
+  }
+
+  const handlePresetSingleLine = () => {
+    const canvas = padRef.current?.getCanvas()
+    if (!canvas) return
+    drawPathsOnCanvas(canvas, PRESET_PATHS.line)
     padRef.current?.loadFromDataURL(canvas.toDataURL())
     evaluateSignature(canvas, false)
   }
@@ -325,6 +337,16 @@ export default function SignatureArena() {
               >
                 <span><b>3. "Fixer" Collusion</b> (Form signed by Maria Santos)</span>
                 <span className="badge bad" style={{ fontSize: '0.7rem' }}>COLLISION</span>
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={handlePresetSingleLine}
+                style={{ textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <span><b>4. Just a Line</b> (Lazy straight stroke mark)</span>
+                <span className="badge warn" style={{ fontSize: '0.7rem' }}>FLAGGED</span>
               </button>
             </div>
           </div>
