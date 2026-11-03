@@ -12,7 +12,7 @@ export default function MapView({ apps, clusters, layers, selectedCluster, onSel
   const [ready, setReady] = React.useState(false)
 
   useEffect(() => {
-    map.current = L.map(el.current, { zoomControl: true, preferCanvas: true }).setView(LGU.center, 14)
+    map.current = L.map(el.current, { zoomControl: true, preferCanvas: true }).setView(LGU.center, 15)
     const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map.current)
     tiles.on('load', () => setReady(true))
     const to = setTimeout(() => setReady(true), 2500) // offline: stop the skeleton, overlays still render
@@ -26,8 +26,17 @@ export default function MapView({ apps, clusters, layers, selectedCluster, onSel
     if (!g) return
     g.clearLayers()
     if (layers.barangays) {
+      // De La Salle University Taft Avenue Core Landmark
+      L.marker(LGU.center, {
+        interactive: true,
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="background:#15803d;color:#fff;font:bold 11px system-ui;padding:3px 9px;border-radius:12px;border:1.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);white-space:nowrap;transform:translate(-50%,-50%);cursor:pointer">🏛️ DLSU Taft Ave</div>`
+        })
+      }).bindTooltip('<b>De La Salle University - Manila</b><br/>2401 Taft Avenue, Malate, Manila (Core Monitoring Zone)').addTo(g)
+
       BARANGAYS.forEach((b) => {
-        L.circle(b.centroid, { radius: 640, color: '#6b7280', weight: 1, dashArray: '4 6', fillOpacity: 0.03, interactive: false }).addTo(g)
+        L.circle(b.centroid, { radius: 380, color: '#6b7280', weight: 1, dashArray: '4 6', fillOpacity: 0.03, interactive: false }).addTo(g)
         L.marker(b.centroid, { interactive: false, icon: L.divIcon({ className: '', html: `<div style="color:#2b2f3a;font:600 11px 'Segoe UI';text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 5px #fff;white-space:nowrap;transform:translate(-50%,-50%)">${b.name}</div>` }) }).addTo(g)
       })
     }

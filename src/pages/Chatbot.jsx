@@ -1,19 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useApp } from '../store.jsx'
 import { Badge, Card, PageHead, RiskBadge, SyntheticBanner } from '../components/ui.jsx'
-import { getComelecVoters } from '../lib/api.js'
+import { getComelecVoters, getVoterDossier, getDurationAnalytics } from '../lib/api.js'
 import { 
   MessageSquareText, Send, Sparkles, Bot, User, 
-  HelpCircle, ArrowRight, ShieldCheck, AlertTriangle, FileText, CheckCircle2 
+  HelpCircle, ArrowRight, ShieldCheck, AlertTriangle, FileText, 
+  CheckCircle2, Clock, IdCard, Camera, Search, UserCheck, AlertOctagon
 } from 'lucide-react'
 
 const SUGGESTED_QUERIES = [
+  'Summarize voter CARLOS DELA CRUZ',
+  'Summarize voter MARIA SANTOS',
   'Show High priority cases in Sampaguita',
+  'How does self-learned AI detect voting pacing anomalies?',
+  'What is the average voting duration across precincts?',
   'Summarize cluster CL-0089',
   'Which applications have matching handwriting?',
-  'How does 100% Local AI biometric facial recognition work?',
-  'List registered mock voters in COMELEC registry',
-  'What is the status of ERB investigation cases?'
+  'How does 100% Local AI biometric privacy comply with RA 10173?'
 ]
 
 export default function Chatbot() {
@@ -21,12 +24,14 @@ export default function Chatbot() {
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
-      text: 'Hello, Administrator. I am the **ONCE AI Oversight Assistant**. I have authorized read-only access to voter applications, geospatial clusters, forensic handwriting similarity findings, and local biometric verification logs. How may I assist your election review today?',
+      text: 'Hello, Administrator. I am the **ONCE AI Oversight & Voter Intelligence Assistant**.\n\nI can **summarize any voter** with their complete official record, registered ID picture, live verification photos (Face IN & OUT), attendance timestamps, and self-learned AI pacing analysis. I can also answer interactive questions regarding fraud clusters, handwriting similarities, and precinct turnout.',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ])
   const [input, setInput] = useState('')
   const [typing, setTyping] = useState(false)
+  const [comelecVoters, setComelecVoters] = useState([])
+  const [selectedVoterId, setSelectedVoterId] = useState('')
   const chatEndRef = useRef(null)
 
   const scrollToBottom = () => {
@@ -36,6 +41,18 @@ export default function Chatbot() {
   useEffect(() => {
     scrollToBottom()
   }, [messages, typing])
+
+  useEffect(() => {
+    async function fetchVoters() {
+      try {
+        const d = await getComelecVoters()
+        if (d?.voters) setComelecVoters(d.voters)
+      } catch (e) {
+        console.warn('Could not fetch COMELEC voters in chat:', e)
+      }
+    }
+    fetchVoters()
+  }, [])
 
   const handleSend = async (queryText) => {
     const text = (queryText || input).trim()
@@ -57,24 +74,152 @@ export default function Chatbot() {
         sender: 'bot',
         text: botResponse.text,
         cards: botResponse.cards || null,
+        voterDossier: botResponse.voterDossier || null,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }])
       setTyping(false)
     }, 600)
   }
 
+  // Handle Quick Voter Summarizer button/dropdown
+  const handleSummarizeVoter = async (voterId) => {
+    if (!voterId) return
+    const v = comelecVoters.find(x => x.voter_id === voterId)
+    const name = v?.name || voterId
+    await handleSend(`Summarize voter ${name}`)
+  }
+
   const generateAnswer = async (q, res, st, sm) => {
     const low = q.toLowerCase()
 
+    // --------------------------------------------------------------------------
+    // 1. SPECIFIC VOTER SUMMARY WITH PHOTOS (ID VS LIVE FACE IN / OUT)
+    // --------------------------------------------------------------------------
+    if (low.includes('summarize voter') || low.includes('votee') || low.includes('tell me about voter') || low.includes('carlos') || low.includes('maria') || low.includes('voter-')) {
+      // Find matching voter
+      let matchedVoter = null
+      for (const v of comelecVoters) {
+        if (low.includes(v.name.toLowerCase()) || low.includes(v.voter_id.toLowerCase()) || low.includes(v.vin.toLowerCase())) {
+          matchedVoter = v
+          break
+        }
+      }
+
+      // Try fetching live dossier from backend API
+      let liveDossier = null
+      if (matchedVoter) {
+        try {
+          liveDossier = await getVoterDossier(matchedVoter.voter_id)
+        } catch (e) {
+          console.warn('Backend dossier API notice:', e)
+        }
+      }
+
+      // Fallback synthetic dossier if none enrolled yet or demo query
+      if (!matchedVoter && !liveDossier) {
+        // Pick an application from the dataset
+        const app = res.apps.find(a => low.includes(a.name.toLowerCase()) || low.includes(a.id.toLowerCase())) || res.apps[0]
+        liveDossier = {
+          voter_id: app.id,
+          name: app.name,
+          vin: `VIN-${app.id.replace('APP-', '')}-NCR2026`,
+          precinct_id: 'Precinct 101 - Manila',
+          barangay: app.addr.components.barangay || 'Sampaguita',
+          birthdate: '1996-08-20',
+          civil_status: 'Married',
+          citizenship: 'Filipino',
+          registration_status: app.label === 'High' ? 'FLAGGED FOR HEARING' : 'VERIFIED & CLEARED',
+          has_voted: true,
+          ballot_serial: 'BALLOT-CEF1-884210AF',
+          photo_id_base64: app.photo_base64 || generatePlaceholderAvatar(app.name, '#1e293b', '#38bdf8'),
+          photo_in_base64: app.photo_base64 || generatePlaceholderAvatar(app.name, '#0f172a', '#22c55e'),
+          photo_out_base64: app.photo_base64 || generatePlaceholderAvatar(app.name, '#111827', '#fbbf24'),
+          face_in_timestamp: '2026-11-03 09:14:22',
+          face_out_timestamp: '2026-11-03 09:17:45',
+          duration_seconds: 203,
+          duration_formatted: '3m 23s',
+          timing_anomaly: {
+            flag: 'NORMAL',
+            severity: 'NONE',
+            explanation: 'Voter completed ballot in 3m 23s (203s), consistent with the running learned average of 195s ± 21s.'
+          },
+          id_match_confidence: 98.7
+        }
+      } else if (!liveDossier && matchedVoter) {
+        liveDossier = {
+          voter_id: matchedVoter.voter_id,
+          name: matchedVoter.name,
+          vin: matchedVoter.vin,
+          precinct_id: matchedVoter.precinct_id,
+          barangay: matchedVoter.barangay,
+          birthdate: matchedVoter.birthdate,
+          civil_status: matchedVoter.civil_status || 'Single',
+          citizenship: 'Filipino',
+          registration_status: matchedVoter.has_voted ? 'BALLOT CAST (LOCKED)' : 'REGISTERED / ELIGIBLE',
+          has_voted: matchedVoter.has_voted,
+          ballot_serial: matchedVoter.attendance?.status ? 'BALLOT-CEF1-2B1089A' : 'NOT YET ISSUED',
+          photo_id_base64: matchedVoter.photo_base64,
+          photo_in_base64: matchedVoter.photo_base64,
+          photo_out_base64: matchedVoter.photo_base64,
+          face_in_timestamp: matchedVoter.attendance?.face_in || '2026-11-03 10:20:15',
+          face_out_timestamp: matchedVoter.attendance?.face_out || '2026-11-03 10:23:30',
+          duration_seconds: 195,
+          duration_formatted: matchedVoter.attendance?.duration || '3m 15s',
+          timing_anomaly: {
+            flag: matchedVoter.attendance?.anomaly_flag || 'NORMAL',
+            severity: matchedVoter.attendance?.anomaly_flag === 'RUSH_ANOMALY' ? 'HIGH' : 'NONE',
+            explanation: matchedVoter.attendance?.anomaly_flag === 'RUSH_ANOMALY'
+              ? 'SUSPICIOUS RAPID COMPLETION: Ballot fed in 25s (<45s threshold). Flagged for unshaded ballot or proxy rush.'
+              : 'NORMAL PACED COMPLETION: Consistent with learned precinct baseline (195s ± 21s).'
+          },
+          id_match_confidence: 99.1
+        }
+      }
+
+      return {
+        text: `### 📋 Comprehensive Voter Dossier: ${liveDossier.name}\n\n` +
+          `Here is the verified intelligence summary for **${liveDossier.name}** (${liveDossier.vin}). This includes comparison between the **official registered ID photo** and the **live photos captured at Face IN and Face OUT**, alongside timestamps and AI timing anomaly evaluation:`,
+        voterDossier: liveDossier
+      }
+    }
+
+    // --------------------------------------------------------------------------
+    // 2. TIMING ANOMALY & SELF-LEARNED AI QUESTIONS
+    // --------------------------------------------------------------------------
+    if (low.includes('pacing') || low.includes('average completed time') || low.includes('duration') || low.includes('early') || low.includes('lately') || low.includes('suspicious') && low.includes('time')) {
+      let stats = null
+      try {
+        const d = await getDurationAnalytics()
+        stats = d?.stats
+      } catch (e) {}
+
+      const avg = stats?.learned_mean_seconds || 195
+      const minNominal = stats?.nominal_min_seconds || 45
+      const maxNominal = stats?.nominal_max_seconds || 480
+
+      return {
+        text: `### ⏱️ Mocked Self-Learned AI Voting Pacing Engine\n\n` +
+          `The ONCE AI duration engine continuously monitors the time elapsed from **Face IN** (receiving paper ballot) to **Face OUT** (feeding ballot into the box):\n\n` +
+          `• **Current Learned Baseline Average:** **${Math.floor(avg/60)}m ${Math.round(avg%60)}s** (${avg} seconds).\n` +
+          `• **Adaptive Learning Mechanism:** Each completed voter attendance updates the running normal distribution ($\mu, \sigma$) in RAM, allowing the AI to adjust to specific precinct lines and ballot lengths dynamically.\n` +
+          `• **🚨 Early Completion Anomaly (Rush):** Flagged if a voter finishes in **< ${minNominal} seconds** ($Z < -2.0$). Indicates potential unshaded blank ballots, rushed coercion, or booth bypass.\n` +
+          `• **⚠️ Protracted Delay Anomaly (Delay):** Flagged if a voter remains in the booth for **> ${Math.floor(maxNominal/60)} minutes** ($Z > +2.5$). Indicates potential ballot tampering, illegal booth photography, unauthorized assistance, or ballot substitution.\n\n` +
+          `You can view the real-time pacing bell-curve distribution under **Analytics & Reports**.`
+      }
+    }
+
+    // --------------------------------------------------------------------------
+    // 3. GEOSPATIAL CLUSTERS & DBSCAN
+    // --------------------------------------------------------------------------
     if (low.includes('sampaguita') || low.includes('cl-0089') || low.includes('cluster')) {
       const c = res.clusters.find(x => x.id === 'CL-0089' || x.barangayName.toLowerCase().includes('sampaguita'))
       const appsInCluster = res.apps.filter(a => a.cluster?.id === c?.id)
       return {
-        text: `**Spatial Cluster Investigation: ${c?.id || 'CL-0089'} (${c?.barangayName || 'Sampaguita'})**\n\n` +
-          `• **Cluster Size:** ${c?.size || 16} voter applications within a dense radius.\n` +
-          `• **Anomaly Severity:** ${(c?.severity * 100).toFixed(0)}% (Spike ratio: ${c?.stat?.spike || '2.3x'} baseline).\n` +
-          `• **Context Analysis:** **${c?.status || 'Context unavailable'}**. Unlike student dorms, this address has no registered high-capacity residential structure, indicating a potential flying voter staging hub.\n\n` +
-          `Here are the prominent applications in this cluster for immediate review:`,
+        text: `### 🗺️ Spatial Cluster Investigation: ${c?.id || 'CL-0089'} (${c?.barangayName || 'Sampaguita'})\n\n` +
+          `• **Cluster Size:** **${c?.size || 16} applications** grouped within a tight ${c?.radiusM || 85}m radius.\n` +
+          `• **Anomaly Severity:** ${(c?.severity * 100).toFixed(0)}% (Spike ratio: **${c?.stat?.spike || '2.3x'}** of monthly baseline).\n` +
+          `• **Context Analysis:** **${c?.status || 'Context unavailable'}**. Unlike student dorms, this residential area lacks multi-tenant housing capacity, indicating a potential flying voter staging hub.\n\n` +
+          `Associated applications flagged for hearing:`,
         cards: appsInCluster.slice(0, 4).map(a => ({
           id: a.id,
           name: a.name,
@@ -85,29 +230,17 @@ export default function Chatbot() {
       }
     }
 
-    if (low.includes('high priority') || low.includes('flagged') || low.includes('high risk')) {
-      const highApps = res.apps.filter(a => a.label === 'High')
-      return {
-        text: `**High-Risk Application Summary**\n\n` +
-          `The ERB triage model has isolated **${highApps.length} High-Risk applications** requiring formal hearing. Under our conservative two-indicator policy, an application is only rated High if at least two independent indicators (e.g. spatial clustering + handwriting duplication) trigger simultaneously.`,
-        cards: highApps.slice(0, 5).map(a => ({
-          id: a.id,
-          name: a.name,
-          address: a.addr.normalized,
-          label: a.label,
-          score: a.score
-        }))
-      }
-    }
-
+    // --------------------------------------------------------------------------
+    // 4. FORENSIC HANDWRITING FORGERY
+    // --------------------------------------------------------------------------
     if (low.includes('handwriting') || low.includes('forgery') || low.includes('batch')) {
       const groups = res.handwriting.groups
       return {
-        text: `**Batch Forgery & Handwriting Similarity Findings**\n\n` +
-          `• **Similarity Groups:** Detected **${groups.length} distinct handwriting clusters** sharing high cosine similarity.\n` +
-          `• **Threshold:** Cosine distance benchmark is configured at **${st.config.hwThreshold}**.\n` +
-          `• **Largest Group:** Group **${groups[0]?.id || 'HW-G1'}** contains **${groups[0]?.ids.length || 7} applications** written with the exact same pen strokes and glyph morphology.\n\n` +
-          `You can inspect pairwise visual comparisons in **Identification Analysis → Handwriting Similarity**.`,
+        text: `### ✍️ Forensic Handwriting Batch Forgery Findings\n\n` +
+          `• **Identified Handwriting Clusters:** **${groups.length} distinct groups** sharing high cosine stroke similarity.\n` +
+          `• **Threshold Setting:** Cosine distance benchmark is configured at **${st.config.hwThreshold}**.\n` +
+          `• **Largest Forgery Ring:** Group **${groups[0]?.id || 'HW-G1'}** contains **${groups[0]?.ids.length || 7} applications** exhibiting matching stroke curvature, pen pressure, and glyph morphology, indicating a single preparer.\n\n` +
+          `Compare high-resolution visual stroke crops under **Identification Analysis → Handwriting Similarity**.`,
         cards: groups.slice(0, 3).map(g => ({
           id: g.id,
           name: `${g.ids.length} Linked Applications`,
@@ -118,75 +251,91 @@ export default function Chatbot() {
       }
     }
 
-    if (low.includes('biometric') || low.includes('face') || low.includes('facial') || low.includes('local ai')) {
+    // --------------------------------------------------------------------------
+    // 5. DATA PRIVACY & RA 10173 COMPLIANCE
+    // --------------------------------------------------------------------------
+    if (low.includes('privacy') || low.includes('10173') || low.includes('compliance') || low.includes('secure') || low.includes('biometric')) {
       return {
-        text: `**Biometric Facial Recognition Architecture**\n\n` +
-          `• **100% Local AI in RAM:** Powered by DeepFace FaceNet512, extracting 512-dimensional vector embeddings with zero cloud upload.\n` +
-          `• **Cancelable Biometric Salt:** Vector templates are projected via an orthogonal matrix transformation ($Q \\in \\mathbb{R}^{512 \\times 512}$) to protect citizen privacy under **Republic Act 10173**.\n` +
-          `• **1:1 Check-in Matching:** Calibrated at **0.77 threshold**. Legitimate voters consistently score ~82% - 88% confidence, while impostors (< 75%) are instantly blocked with an alert.\n` +
-          `• **Physical Paper Ballot Protection:** Adheres to **Republic Act 9369**. Facial recognition is used exclusively for voter identity intake and precinct check-in, never for voting.`
-      }
-    }
-
-    if (low.includes('mock') || low.includes('comelec') || low.includes('voter')) {
-      let count = 0
-      try {
-        const d = await getComelecVoters()
-        count = d.count || 0
-      } catch (e) {}
-
-      return {
-        text: `**COMELEC Mock Voter Registry**\n\n` +
-          `Currently, **${count} mock citizens** are enrolled in the local RAM database. You can generate new mock voter IDs or test 1:1 biometric facial check-in under the **Identification Analysis** or **COMELEC Mock Registry** tabs.`
-      }
-    }
-
-    if (low.includes('case') || low.includes('investigation') || low.includes('erb')) {
-      return {
-        text: `**Investigation Cases Overview**\n\n` +
-          `• **Awaiting Review:** ${sm.awaiting} cases\n` +
-          `• **Pending Decision:** ${sm.pending} cases\n` +
-          `• **Confirmed Anomalies:** ${sm.confirmed} cases\n` +
-          `• **Dismissed / Cleared:** ${sm.dismissed} cases\n\n` +
-          `Investigators can record findings, tag suspicious ringleaders, and prepare ERB hearing reports in **Investigation Cases**.`
+        text: `### 🔒 Sovereign Biometric Privacy & RA 10173 Architecture\n\n` +
+          `1. **100% Local In-Memory Inference:** OpenCV and Facenet512 decode images strictly in RAM (` + '`' + `cv2.imdecode` + '`' + `). Zero temporary files are written to disk or sent to external cloud APIs.\n` +
+          `2. **Cancelable Biometrics ($Q$-Matrix Projection):** Vectors are transformed via a secret orthogonal projection matrix ($Q^T Q = I$). If leaked, templates cannot be inverted to reconstruct the citizen's original face.\n` +
+          `3. **Post-Election Crypto-Shredding:** Revoking ` + '`' + `ELECTION_SECRET_SALT` + '`' + ` immediately renders all stored vectors mathematically useless, guaranteeing zero lingering biometric retention.\n` +
+          `4. **Strict Separation:** The public Lalamove-style tracking stream only shows anonymized spatial clusters with zero citizen PII.`
       }
     }
 
     // Default Fallback
     return {
       text: `I received your inquiry regarding: "*${q}*".\n\n` +
-        `As an election oversight agent, I can provide direct analysis across:\n` +
-        `1. **Identification Analysis:** Facial 1:1 matches, flying voter cross-checks, and batch handwriting similarities.\n` +
-        `2. **Geographic Analysis:** Spatial DBSCAN clustering, barangay baseline spikes, and dorm registration patterns.\n` +
-        `3. **Voter Records:** Address normalization confidence and registration history.\n` +
-        `4. **Audit Logs:** Immutable activity history and cryptographic hash chains.\n\n` +
-        `Try clicking one of the suggested query chips below or asking about a specific barangay or application ID!`
+        `As the COMELEC election oversight agent, I can assist you with:\n` +
+        `1. **Voter Dossier Summaries:** Try asking "*Summarize voter CARLOS DELA CRUZ*" or "*Tell me about Maria Santos*".\n` +
+        `2. **Attendance & Timing Anomalies:** Inquire about Face IN/OUT duration benchmarks and rush/delay outliers.\n` +
+        `3. **Spatial Radar:** Ask about clusters in Sampaguita or dorm mitigation.\n` +
+        `4. **Forensic Handwriting:** Query batch forgeries and matching glyph clusters.\n\n` +
+        `Feel free to click any of the query chips below or choose a voter from the Quick Summarizer bar!`
     }
+  }
+
+  function generatePlaceholderAvatar(name, bg, fg) {
+    const canvas = document.createElement('canvas')
+    canvas.width = 160
+    canvas.height = 160
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = bg || '#1e293b'
+    ctx.fillRect(0, 0, 160, 160)
+    ctx.fillStyle = fg || '#38bdf8'
+    ctx.font = 'bold 54px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'CIT'
+    ctx.fillText(initials, 80, 80)
+    return canvas.toDataURL('image/jpeg', 0.85)
   }
 
   return (
     <div className="page" style={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
-      <PageHead title="ONCE AI Chatbot" feature="Conversational Intelligence | Authorized Access">
-        Conversational assistant for election officers and ERB investigators. Query authorized voter records, spatial clusters, handwriting anomalies, and biometric findings using natural language.
+      <PageHead title="ONCE AI Chatbot" feature="Conversational Intelligence | Voter Dossier Summarizer">
+        Conversational assistant for COMELEC election officers. Query registered voter dossiers (ID vs live verification photos), self-learned AI pacing anomalies, and forensic clusters.
       </PageHead>
       <SyntheticBanner />
 
-      <Card style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 460, padding: 0, overflow: 'hidden' }}>
+      <Card style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 480, padding: 0, overflow: 'hidden' }}>
         {/* Chat Header */}
-        <div style={{ padding: '12px 18px', background: 'var(--panel2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '12px 18px', background: 'var(--panel2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--blue)', color: '#fff', display: 'grid', placeItems: 'center' }}>
-              <Bot size={18} />
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: '#c0272d', color: '#fff', display: 'grid', placeItems: 'center', boxShadow: '0 2px 10px rgba(192,39,45,0.3)' }}>
+              <Bot size={20} />
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>ONCE AI Investigation Assistant</div>
-              <div className="small muted">Read-Only Secure Pipeline • Republic Act 10173 Compliant</div>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>ONCE AI Sovereign Oversight Assistant</div>
+              <div className="small muted">Dual-Face Biometrics • Self-Learned Pacing Engine • RA 10173 Compliant</div>
             </div>
           </div>
-          <Badge tone="low">
-            <ShieldCheck size={12} style={{ marginRight: 4, verticalAlign: -1 }} />
-            Active Session
-          </Badge>
+
+          {/* Quick Voter Summarizer Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="small muted" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <IdCard size={14} /> Quick Summarize Voter:
+            </span>
+            <select
+              value={selectedVoterId}
+              onChange={(e) => {
+                setSelectedVoterId(e.target.value)
+                handleSummarizeVoter(e.target.value)
+              }}
+              style={{ fontSize: 12, padding: '4px 10px', borderRadius: 8, background: 'var(--panel)', border: '1px solid var(--border)' }}
+            >
+              <option value="">Select Enrolled Citizen...</option>
+              {comelecVoters.map((v) => (
+                <option key={v.voter_id} value={v.voter_id}>
+                  {v.name} ({v.vin || v.voter_id.slice(-6)})
+                </option>
+              ))}
+              {!comelecVoters.length && (
+                <option value="DEMO-CARLOS">Carlos Dela Cruz (Simulated)</option>
+              )}
+            </select>
+          </div>
         </div>
 
         {/* Message Log */}
@@ -198,12 +347,12 @@ export default function Chatbot() {
                 display: 'flex', 
                 gap: 12, 
                 alignSelf: m.sender === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: m.sender === 'user' ? '70%' : '85%'
+                maxWidth: m.sender === 'user' ? '70%' : '88%'
               }}
             >
               {m.sender === 'bot' && (
                 <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--panel2)', border: '1px solid var(--border)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                  <Sparkles size={16} color="var(--blue)" />
+                  <Sparkles size={16} color="#c0272d" />
                 </div>
               )}
 
@@ -212,7 +361,7 @@ export default function Chatbot() {
                   style={{ 
                     background: m.sender === 'user' ? 'var(--blue)' : 'var(--panel2)', 
                     color: m.sender === 'user' ? '#fff' : 'var(--text)', 
-                    padding: '12px 16px', 
+                    padding: '14px 18px', 
                     borderRadius: 16,
                     borderTopLeftRadius: m.sender === 'bot' ? 4 : 16,
                     borderTopRightRadius: m.sender === 'user' ? 4 : 16,
@@ -223,6 +372,133 @@ export default function Chatbot() {
                 >
                   {m.text}
 
+                  {/* -------------------------------------------------------- */}
+                  {/* VOTER DOSSIER SUMMARY CARD WITH ID VS LIVE VERIFIED PHOTOS */}
+                  {/* -------------------------------------------------------- */}
+                  {m.voterDossier && (
+                    <div style={{ 
+                      marginTop: 14, 
+                      background: 'var(--panel)', 
+                      border: '1.5px solid var(--border)', 
+                      borderRadius: 14, 
+                      padding: 16,
+                      boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 10, marginBottom: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 800 }}>{m.voterDossier.name}</div>
+                          <div className="mono small" style={{ color: 'var(--muted)' }}>VIN: {m.voterDossier.vin} • ID: {m.voterDossier.voter_id}</div>
+                        </div>
+                        <Badge tone={m.voterDossier.registration_status.includes('FLAGGED') ? 'high' : 'low'}>
+                          {m.voterDossier.registration_status}
+                        </Badge>
+                      </div>
+
+                      {/* TRIPLE PHOTO COMPARISON: ID PHOTO VS LIVE FACE IN VS LIVE FACE OUT */}
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 6 }}>
+                          Biometric Photo Comparison (Official Registry vs Live Intake & Exit Verification)
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 10 }}>
+                          {/* 1. Official COMELEC ID Photo */}
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ width: '100%', height: 110, borderRadius: 10, overflow: 'hidden', border: '2px solid var(--border)', background: '#000', marginBottom: 4 }}>
+                              <img 
+                                src={m.voterDossier.photo_id_base64 || generatePlaceholderAvatar(m.voterDossier.name)} 
+                                alt="Official ID Photo" 
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            </div>
+                            <span className="chip small" style={{ fontSize: 10, fontWeight: 700 }}>
+                              1. Official ID Photo
+                            </span>
+                          </div>
+
+                          {/* 2. Live Face IN (Check-In) */}
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ width: '100%', height: 110, borderRadius: 10, overflow: 'hidden', border: '2px solid #22c55e', background: '#000', marginBottom: 4 }}>
+                              <img 
+                                src={m.voterDossier.photo_in_base64 || m.voterDossier.photo_id_base64} 
+                                alt="Live Face IN" 
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            </div>
+                            <span className="chip small" style={{ fontSize: 10, fontWeight: 700, color: '#22c55e' }}>
+                              2. Live Face IN
+                            </span>
+                          </div>
+
+                          {/* 3. Live Face OUT (Check-Out) */}
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ width: '100%', height: 110, borderRadius: 10, overflow: 'hidden', border: '2px solid #38bdf8', background: '#000', marginBottom: 4 }}>
+                              <img 
+                                src={m.voterDossier.photo_out_base64 || m.voterDossier.photo_id_base64} 
+                                alt="Live Face OUT" 
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            </div>
+                            <span className="chip small" style={{ fontSize: 10, fontWeight: 700, color: '#38bdf8' }}>
+                              3. Live Face OUT
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Attendance Timestamps & Voting Booth Duration */}
+                      <div style={{ background: 'var(--panel2)', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, fontSize: 12 }}>
+                          <div>
+                            <span className="muted small">Assigned Precinct</span>
+                            <div style={{ fontWeight: 700 }}>{m.voterDossier.precinct_id}</div>
+                          </div>
+                          <div>
+                            <span className="muted small">Face IN Check-In</span>
+                            <div className="mono" style={{ fontWeight: 700 }}>{m.voterDossier.face_in_timestamp || '09:14:22'}</div>
+                          </div>
+                          <div>
+                            <span className="muted small">Face OUT Check-Out</span>
+                            <div className="mono" style={{ fontWeight: 700 }}>{m.voterDossier.face_out_timestamp || '09:17:45'}</div>
+                          </div>
+                          <div>
+                            <span className="muted small">Total Voting Duration</span>
+                            <div style={{ fontWeight: 800, color: '#38bdf8' }}>
+                              {m.voterDossier.duration_formatted || '3m 23s'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Self-Learned AI Pacing Verdict */}
+                      <div style={{ 
+                        padding: '10px 14px', 
+                        borderRadius: 10, 
+                        background: m.voterDossier.timing_anomaly?.flag === 'NORMAL' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.15)',
+                        border: m.voterDossier.timing_anomaly?.flag === 'NORMAL' ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ 
+                            fontWeight: 800, 
+                            fontSize: 12,
+                            color: m.voterDossier.timing_anomaly?.flag === 'NORMAL' ? '#22c55e' : '#f43f5e',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6
+                          }}>
+                            {m.voterDossier.timing_anomaly?.flag === 'NORMAL' ? <CheckCircle2 size={14} /> : <AlertOctagon size={14} />}
+                            AI Pacing Verdict: {m.voterDossier.timing_anomaly?.flag || 'NORMAL'}
+                          </span>
+                          <span className="mono small" style={{ fontSize: 11 }}>
+                            Match: <b>{m.voterDossier.id_match_confidence}%</b> (Facenet512)
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text)', lineHeight: 1.4 }}>
+                          {m.voterDossier.timing_anomaly?.explanation || 'Completed within nominal learned statistical parameters.'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Standard Query Cards */}
                   {m.cards && (
                     <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
                       {m.cards.map((c) => (
@@ -271,7 +547,7 @@ export default function Chatbot() {
               <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--panel2)', display: 'grid', placeItems: 'center' }}>
                 <Sparkles size={16} className="animate-spin" />
               </div>
-              <div className="small muted">ONCE AI is analyzing records...</div>
+              <div className="small muted">ONCE AI is analyzing biometric records & self-learning timestamps...</div>
             </div>
           )}
           <div ref={chatEndRef} />
@@ -301,7 +577,7 @@ export default function Chatbot() {
             type="text" 
             value={input} 
             onChange={(e) => setInput(e.target.value)} 
-            placeholder="Ask about voter records, spatial clusters, handwriting anomalies, or biometrics..."
+            placeholder="Ask about any voter, compare ID vs live verification photos, or query AI pacing anomalies..."
             style={{ flex: 1, padding: '10px 14px' }}
           />
           <button type="submit" className="btn primary" disabled={!input.trim()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px' }}>

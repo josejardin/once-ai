@@ -1,24 +1,24 @@
-// FICTITIOUS local government unit used for the demonstration.
-// "Santa Demo, Nueva Demo" and its barangays do not correspond to real administrative units.
-// Coordinates are placed on a real map area only so the Leaflet/OpenStreetMap layer is usable.
+// Local government unit used for the demonstration: City of Manila (NCR).
+// Small compact barangays in the City of Manila focused around De La Salle University, Taft Avenue, Malate (District 5).
 import { hashStr, mulberry32 } from './rng.js'
 import { offsetMeters } from './geo.js'
 
 export const LGU = {
-  municipality: 'Santa Demo',
-  province: 'Nueva Demo',
-  center: [15.578, 120.92],
+  municipality: 'City of Manila',
+  province: 'Metro Manila (NCR)',
+  district: 'District 5 - Malate / De La Salle Taft Avenue',
+  center: [14.5648, 120.9932], // De La Salle University, Taft Avenue, Malate, Manila
 }
 
 const RAW = [
-  { id: 'SAM', name: 'Sampaguita', aliases: ['sampagita'], centroid: [15.59, 120.905], population: 5200, areaKm2: 2.1, baseline: 7, misspell: ['Sampagita', 'Sampaguta'] },
-  { id: 'MAB', name: 'Mabini Norte', aliases: ['mabini', 'mabini n'], centroid: [15.59, 120.92], population: 6100, areaKm2: 2.6, baseline: 9, misspell: ['Mabini Norte', 'Mabini N.'] },
-  { id: 'DAL', name: 'Dalisay', aliases: ['dalisai'], centroid: [15.59, 120.935], population: 4800, areaKm2: 1.8, baseline: 10, misspell: ['Dalisai', 'Dalisay'] },
-  { id: 'BAG', name: 'Bagong Silang', aliases: ['bagong silangan', 'b silang'], centroid: [15.578, 120.905], population: 7300, areaKm2: 2.4, baseline: 11, misspell: ['Bagong Silang', 'Bagong Silan'] },
-  { id: 'MAL', name: 'Maligaya', aliases: ['maligaia'], centroid: [15.578, 120.92], population: 8200, areaKm2: 2.9, baseline: 12, misspell: ['Maligya', 'Maligaya'] },
-  { id: 'PAG', name: 'Pag-asa', aliases: ['pagasa', 'pag asa'], centroid: [15.578, 120.935], population: 3900, areaKm2: 1.9, baseline: 6, misspell: ['Pagasa', 'Pag-asa'] },
-  { id: 'KAL', name: 'Kalayaan', aliases: ['kalayan'], centroid: [15.566, 120.912], population: 3600, areaKm2: 2.2, baseline: 6, misspell: ['Kalayan', 'Kalayaan'] },
-  { id: 'SIS', name: 'San Isidro', aliases: ['sn isidro', 'san isidro demo'], centroid: [15.566, 120.928], population: 4500, areaKm2: 2.0, baseline: 8, misspell: ['San Isidro', 'Sn. Isidro'] },
+  { id: 'SAM', name: 'Sampaguita', aliases: ['sampagita'], centroid: [14.5695, 120.9885], population: 5200, areaKm2: 0.28, baseline: 7, misspell: ['Sampagita', 'Sampaguta'] },
+  { id: 'MAB', name: 'Mabini Norte', aliases: ['mabini', 'mabini n'], centroid: [14.5710, 120.9932], population: 6100, areaKm2: 0.32, baseline: 9, misspell: ['Mabini Norte', 'Mabini N.'] },
+  { id: 'DAL', name: 'Dalisay', aliases: ['dalisai'], centroid: [14.5695, 120.9980], population: 4800, areaKm2: 0.25, baseline: 10, misspell: ['Dalisai', 'Dalisay'] },
+  { id: 'BAG', name: 'Bagong Silang', aliases: ['bagong silangan', 'b silang'], centroid: [14.5648, 120.9875], population: 7300, areaKm2: 0.35, baseline: 11, misspell: ['Bagong Silang', 'Bagong Silan'] },
+  { id: 'MAL', name: 'Maligaya', aliases: ['maligaia'], centroid: [14.5648, 120.9932], population: 8200, areaKm2: 0.38, baseline: 12, misspell: ['Maligya', 'Maligaya'] },
+  { id: 'PAG', name: 'Pag-asa', aliases: ['pagasa', 'pag asa'], centroid: [14.5648, 120.9990], population: 3900, areaKm2: 0.22, baseline: 6, misspell: ['Pagasa', 'Pag-asa'] },
+  { id: 'KAL', name: 'Kalayaan', aliases: ['kalayan'], centroid: [14.5590, 120.9895], population: 3600, areaKm2: 0.26, baseline: 6, misspell: ['Kalayan', 'Kalayaan'] },
+  { id: 'SIS', name: 'San Isidro', aliases: ['sn isidro', 'san isidro demo'], centroid: [14.5590, 120.9970], population: 4500, areaKm2: 0.29, baseline: 8, misspell: ['San Isidro', 'Sn. Isidro'] },
 ]
 
 const SITIOS = {
@@ -41,13 +41,13 @@ const BUILDINGS = [
 const LANDMARK_TYPES = [
   { key: 'church', label: 'Church / Chapel', phrases: ['simbahan', 'church', 'kapilya', 'chapel'] },
   { key: 'market', label: 'Public Market', phrases: ['palengke', 'public market', 'talipapa', 'market'] },
-  { key: 'school', label: 'School', phrases: ['eskwelahan', 'paaralan', 'elementary school', 'school'] },
+  { key: 'school', label: 'School', phrases: ['eskwelahan', 'paaralan', 'elementary school', 'school', 'dlsu', 'la salle'] },
   { key: 'hall', label: 'Barangay Hall', phrases: ['barangay hall', 'brgy hall', 'munisipyo'] },
   { key: 'court', label: 'Basketball Court', phrases: ['basketball court', 'covered court', 'basketball'] },
   { key: 'bridge', label: 'Bridge', phrases: ['tulay', 'bridge'] },
 ]
 
-const STREET_POOL = ['Rizal', 'Mabini', 'Bonifacio', 'Luna', 'Mango', 'Acacia', 'Narra', 'Del Pilar']
+const STREET_POOL = ['Taft Ave', 'Fidel Reyes', 'Leon Guinto', 'Pablo Ocampo', 'Estrada', 'Castro', 'Quirino Ave', 'Adriatico']
 
 function purokCenter(centroid, n) {
   const ang = ((n - 1) * 72 * Math.PI) / 180

@@ -5,8 +5,8 @@ import { BARANGAYS, LGU, ALL_BUILDINGS, ALL_SITIOS, getBarangay } from './gazett
 import { hashStr, mulberry32 } from './rng.js'
 import { offsetMeters } from './geo.js'
 
-const STOP = new Set(['purok', 'sitio', 'barangay', 'street', 'avenue', 'road', 'santa', 'nueva', 'demo', 'tapat', 'malapit', 'likod', 'katabi', 'harap', 'ng', 'sa', 'ni', 'ang', 'block', 'lot', 'subdivision', 'phase', 'poblacion', 'city', 'municipality', 'province', 'ecija', 'near', 'beside', 'behind', 'in', 'front', 'of', 'the', 'at'])
-const OUTSIDE = ['cabanatuan', 'gapan', 'munoz', 'guimba', 'palayan', 'manila', 'quezon city', 'cavite']
+const STOP = new Set(['purok', 'sitio', 'barangay', 'street', 'avenue', 'road', 'santa', 'nueva', 'demo', 'manila', 'ncr', 'tapat', 'malapit', 'likod', 'katabi', 'harap', 'ng', 'sa', 'ni', 'ang', 'block', 'lot', 'subdivision', 'phase', 'poblacion', 'city', 'municipality', 'province', 'ecija', 'near', 'beside', 'behind', 'in', 'front', 'of', 'the', 'at'])
+const OUTSIDE = ['cabanatuan', 'gapan', 'munoz', 'guimba', 'palayan', 'quezon city', 'makati', 'pasig', 'taguig', 'cavite', 'bulacan', 'pampanga']
 
 const NUM_WORDS = { uno: 1, isa: 1, one: 1, dos: 2, dalawa: 2, two: 2, tres: 3, tatlo: 3, three: 3, kwatro: 4, apat: 4, four: 4, singko: 5, lima: 5, five: 5 }
 
@@ -118,8 +118,8 @@ export function normalizeAddress(rawInput, seedKey = 'preview') {
   }
 
   // municipality / province / outside-LGU references
-  if (text.includes('santa demo')) comp.municipality = LGU.municipality
-  if (text.includes('nueva demo')) comp.province = LGU.province
+  if (text.includes('santa demo') || text.includes('manila') || text.includes('city of manila')) comp.municipality = LGU.municipality
+  if (text.includes('nueva demo') || text.includes('metro manila') || text.includes('ncr')) comp.province = LGU.province
   const outside = OUTSIDE.find((o) => text.includes(o))
   if (outside) w('OUTSIDE_LGU', 'alert', `Address mentions "${title(outside)}", which is outside ${LGU.municipality}. Residency in this LGU is questionable.`)
 

@@ -16,6 +16,44 @@ export async function registerComelecVoter(payload) {
   return res.json();
 }
 
+export async function verifyFaceIn(payload) {
+  const res = await fetch(`${API_BASE}/api/biometrics/verify-face-in`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+  return res.json();
+}
+
+export async function verifyFaceOut(payload) {
+  const res = await fetch(`${API_BASE}/api/biometrics/verify-face-out`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+  return res.json();
+}
+
+export async function getDurationAnalytics() {
+  const res = await fetch(`${API_BASE}/api/ballot/duration-analytics`);
+  if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+  return res.json();
+}
+
+export async function getAllAttendance() {
+  const res = await fetch(`${API_BASE}/api/ballot/attendance`);
+  if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+  return res.json();
+}
+
+export async function getVoterDossier(voterId) {
+  const res = await fetch(`${API_BASE}/api/voters/dossier/${encodeURIComponent(voterId)}`);
+  if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+  return res.json();
+}
+
 export async function clearAllComelecVoters() {
   const res = await fetch(`${API_BASE}/api/comelec/voters/clear-all`, {
     method: 'DELETE'

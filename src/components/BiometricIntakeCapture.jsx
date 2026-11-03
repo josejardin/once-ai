@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
-import { Camera, Upload, CheckCircle2, ShieldCheck, AlertTriangle, RefreshCw, X, Lock, ArrowRight } from 'lucide-react';
+import { 
+  Camera, Upload, CheckCircle2, ShieldCheck, AlertTriangle, 
+  RefreshCw, X, Lock, ArrowRight, Clock, UserCheck, Play, Zap, AlertOctagon 
+} from 'lucide-react';
 import { calculateFaceAlignedMetrics, cropFaceCanvas } from '../lib/livenessCalculations.js';
 import { Badge } from './ui.jsx';
+import { verifyFaceIn, verifyFaceOut, registerComelecVoter } from '../lib/api.js';
 
 export default function BiometricIntakeCapture({
   applicantName,
@@ -13,12 +17,16 @@ export default function BiometricIntakeCapture({
   onBiometricChange,
   disabled
 }) {
+  const [stage, setStage] = useState('IN'); // 'IN' (Check-In) or 'OUT' (Check-Out)
   const [photo, setPhoto] = useState(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [faceLocked, setFaceLocked] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [bioResult, setBioResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  // Session state across IN & OUT
+  const [attendanceSession, setAttendanceSession] = useState(null);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -69,8 +77,8 @@ export default function BiometricIntakeCapture({
         console.warn('Could not check registry count:', e);
       }
     }
-    if (count === 0) {
-      setErrorMsg('No registered citizens found in the COMELEC Mock Registry. Please enroll at least one mock citizen ID first in the COMELEC Mock Registry tab before performing live biometric facial verification.');
+    if (count === 0 && selectedVoter) {
+      setErrorMsg('No registered citizens found in the COMELEC Mock Registry. Please enroll at least one mock citizen ID first in the COMELEC Mock Registry tab.');
       return false;
     }
     return true;
@@ -149,7 +157,7 @@ export default function BiometricIntakeCapture({
     if (!videoRef.current) return;
     const b64 = cropFaceCanvas(videoRef.current, bboxRef.current, 256);
     stopCamera();
-    await processBiometricEnrollment(b64);
+    await processBiometricSubmission(b64);
   }
 
   async function handleFileUpload(e) {
@@ -168,120 +176,150 @@ export default function BiometricIntakeCapture({
       const img = new Image();
       img.onload = async () => {
         const b64 = cropFaceCanvas(img, null, 256);
-        await processBiometricEnrollment(b64);
+        await processBiometricSubmission(b64);
       };
       img.src = event.target.result;
     };
     reader.readAsDataURL(file);
   }
 
-  async function processBiometricEnrollment(photoBase64) {
+  // Core Face Verification Pipeline (Handles Face IN & Face OUT)
+  async function processBiometricSubmission(photoBase64, simulatedDuration = null) {
     setPhoto(photoBase64);
     setAnalyzing(true);
     setErrorMsg(null);
 
     try {
-      if (selectedVoter && selectedVoter.voter_id) {
-        // 1:1 ID Photo Match against selected COMELEC Mock Voter ID
-        const res = await fetch('http://127.0.0.1:8000/api/biometrics/verify-precinct-checkin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            voter_id: selectedVoter.voter_id,
-            voter_name: selectedVoter.name,
-            precinct_id: selectedVoter.precinct_id || 'Precinct 101 - Manila',
-            image_base64: photoBase64,
-            liveness_passed: true,
-            challenges_completed: ['BLINK', 'SMILE']
-          })
+      const vId = selectedVoter?.voter_id || attendanceSession?.voter_id || `VOTER-${Date.now().toString(36).toUpperCase()}`;
+      const vName = selectedVoter?.name || attendanceSession?.voter_name || applicantName || 'CITIZEN';
+      const precinct = selectedVoter?.precinct_id || 'Precinct 101 - Manila';
+
+      if (stage === 'IN') {
+        // STAGE 1: FACE IN (ATTENDANCE CHECK-IN)
+        const data = await verifyFaceIn({
+          voter_id: vId,
+          voter_name: vName,
+          precinct_id: precinct,
+          image_base64: photoBase64,
+          liveness_passed: true,
+          challenges_completed: ['BLINK', 'SMILE']
         });
 
-        if (!res.ok) throw new Error(`Biometric server error (${res.status})`);
-        const data = await res.json();
         setBioResult(data);
+        if (data.status === 'VERIFIED') {
+          setAttendanceSession({
+            voter_id: vId,
+            voter_name: vName,
+            precinct_id: precinct,
+            ballot_serial: data.ballot_serial,
+            face_in_timestamp: data.face_in_timestamp,
+            photo_in: photoBase64
+          });
+        }
 
         if (onBiometricChange) {
           onBiometricChange({
             photo_base64: photoBase64,
-            voter_id: selectedVoter.voter_id,
-            vin: selectedVoter.vin,
-            biometric_hash: data.status === 'VERIFIED' ? `1:1 MATCHED (${data.id_match_confidence}%)` : 'MISMATCHED',
+            voter_id: vId,
+            vin: selectedVoter?.vin || `VIN-${vId.slice(-4)}`,
+            biometric_hash: data.status === 'VERIFIED' ? `FACE-IN-VERIFIED (${data.id_match_confidence}%)` : 'MISMATCHED',
             status: data.status,
-            isMatch: data.status === 'VERIFIED',
-            isMismatch: data.status === 'ID_PHOTO_MISMATCH'
+            stage: 'FACE_IN',
+            ballot_serial: data.ballot_serial,
+            face_in_time: data.face_in_timestamp,
+            isMatch: data.status === 'VERIFIED'
           });
         }
       } else {
-        // Enrolling new citizen into COMELEC Registry
-        const res = await fetch('http://127.0.0.1:8000/api/comelec/register-voter', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: applicantName || 'APPLICANT',
-            precinct_id: barangay ? `Barangay ${barangay}` : 'Precinct 101 - Manila',
-            photo_base64: photoBase64
-          })
+        // STAGE 2: FACE OUT (ATTENDANCE CHECK-OUT & SELF-LEARNED TIMING ANOMALY AI)
+        const data = await verifyFaceOut({
+          voter_id: vId,
+          voter_name: vName,
+          precinct_id: precinct,
+          image_base64: photoBase64,
+          liveness_passed: true,
+          simulated_duration_seconds: simulatedDuration
         });
 
-        if (!res.ok) {
-          throw new Error(`Biometric server error (${res.status})`);
-        }
-
-        const data = await res.json();
         setBioResult(data);
-
         if (onBiometricChange) {
           onBiometricChange({
             photo_base64: photoBase64,
-            voter_id: data.voter_id,
-            vin: data.vin,
-            biometric_hash: data.status === 'REGISTERED' ? `SHA256:${data.voter_id}` : 'UNHASHED',
+            voter_id: vId,
             status: data.status,
-            isDuplicate: false
+            stage: 'FACE_OUT',
+            face_out_time: data.face_out_timestamp,
+            duration: data.duration_formatted,
+            timing_anomaly: data.timing_anomaly,
+            isMatch: data.status === 'COMPLETED'
           });
         }
       }
     } catch (err) {
-      console.warn('Local AI biometric notice:', err);
-      // Resilient fallback: preserve photo and tag as locally captured in browser
-      const fallbackResult = {
-        status: 'OFFLINE_CAPTURED',
-        voter_id: selectedVoter?.voter_id || `BIO-${Date.now().toString(36).toUpperCase()}`,
-        vin: selectedVoter?.vin || `VIN-${Math.floor(1000 + Math.random() * 9000)}-PH2026`,
-        message: 'Photo captured cleanly in RAM. 512-D vector extraction ready on terminal sync.'
-      };
-      setBioResult(fallbackResult);
-
-      if (onBiometricChange) {
-        onBiometricChange({
-          photo_base64: photoBase64,
-          voter_id: fallbackResult.voter_id,
-          vin: fallbackResult.vin,
-          biometric_hash: `LOCAL-RAM:${fallbackResult.voter_id}`,
-          status: 'OFFLINE_CAPTURED',
-          isDuplicate: false
-        });
-      }
+      console.warn('Biometric attendance error:', err);
+      setErrorMsg(`Biometric server error: ${err.message}`);
     } finally {
       setAnalyzing(false);
     }
   }
 
-  function clearPhoto() {
+  // Quick testing shortcuts for Evaluators
+  const testSimulatedCheckout = async (durationSec, label) => {
+    const photoToUse = photo || selectedVoter?.photo_base64 || 'data:image/jpeg;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    await processBiometricSubmission(photoToUse, durationSec);
+  };
+
+  function clearSession() {
     setPhoto(null);
     setBioResult(null);
     setErrorMsg(null);
+    setAttendanceSession(null);
+    setStage('IN');
     if (fileInputRef.current) fileInputRef.current.value = '';
-    if (onBiometricChange) {
-      onBiometricChange(null);
-    }
+    if (onBiometricChange) onBiometricChange(null);
   }
 
   return (
-    <div className="field" style={{ gap: 8 }}>
-      <label>Biometric Facial Verification</label>
+    <div className="field" style={{ gap: 12 }}>
+      {/* Stage Selector Header: 2 Facial Recognitions (IN vs OUT) */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        background: 'var(--panel2)',
+        padding: '6px 8px',
+        borderRadius: 12,
+        border: '1px solid var(--border)'
+      }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            type="button"
+            className={`chip ${stage === 'IN' ? 'primary' : ''}`}
+            onClick={() => { setStage('IN'); setBioResult(null); }}
+            style={{ fontWeight: 700, padding: '6px 14px' }}
+          >
+            <Clock size={13} style={{ marginRight: 4 }} />
+            1. Face IN (Intake & Ballot Hand-Off)
+          </button>
+          <button
+            type="button"
+            className={`chip ${stage === 'OUT' ? 'primary' : ''}`}
+            onClick={() => { setStage('OUT'); setBioResult(null); }}
+            style={{ fontWeight: 700, padding: '6px 14px' }}
+          >
+            <UserCheck size={13} style={{ marginRight: 4 }} />
+            2. Face OUT (Ballot Box & AI Duration Check)
+          </button>
+        </div>
 
-      {/* 1. WEBCAM CAPTURING STATE */}
+        {attendanceSession && (
+          <span style={{ fontSize: 11, color: '#38bdf8', fontWeight: 600 }}>
+            Session: <b>{attendanceSession.ballot_serial}</b> ({attendanceSession.voter_name})
+          </span>
+        )}
+      </div>
+
+      {/* WEBCAM CAPTURING STATE */}
       {isCapturing ? (
         <div style={{ background: 'var(--panel2)', border: '1.5px solid var(--border)', borderRadius: 16, padding: 16, textAlign: 'center' }}>
           <div style={{ position: 'relative', width: 200, height: 200, margin: '0 auto 12px', borderRadius: '50%', overflow: 'hidden', border: faceLocked ? '3px solid var(--low)' : '3px dashed var(--mod)', background: '#000' }}>
@@ -294,7 +332,7 @@ export default function BiometricIntakeCapture({
             />
             <div style={{ position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center' }}>
               <span className={`badge ${faceLocked ? 'low' : 'mod'}`} style={{ fontSize: 10, fontWeight: 700 }}>
-                {faceLocked ? '✓ Face Tracked (60 FPS)' : 'Align Face in Circle'}
+                {faceLocked ? '✓ Face Tracked (60 FPS)' : `Align Face for Face ${stage}`}
               </span>
             </div>
           </div>
@@ -307,7 +345,7 @@ export default function BiometricIntakeCapture({
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <Camera size={14} />
-              <span>Capture Biometric Portrait</span>
+              <span>Capture Face {stage} Attendance</span>
             </button>
             <button
               type="button"
@@ -321,123 +359,163 @@ export default function BiometricIntakeCapture({
           </div>
         </div>
       ) : photo ? (
-        /* 2. PHOTO CAPTURED & SCREENED STATE */
-        <div style={{ background: 'var(--panel2)', border: '1px solid var(--border)', borderRadius: 14, padding: 12, display: 'flex', gap: 14, alignItems: 'center' }}>
-          <div style={{ width: 72, height: 72, borderRadius: 12, overflow: 'hidden', flexShrink: 0, border: '2px solid var(--low)', background: '#000', position: 'relative' }}>
-            <img src={photo} alt="Applicant Portrait" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.7)', color: '#34d399', fontSize: 8, textAlign: 'center', fontWeight: 'bold' }}>
-              ENROLLED
+        /* PHOTO CAPTURED & ATTENDANCE VERIFIED STATE */
+        <div style={{ background: 'var(--panel2)', border: '1px solid var(--border)', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+            <div style={{ width: 76, height: 76, borderRadius: 12, overflow: 'hidden', flexShrink: 0, border: '2px solid var(--low)', background: '#000', position: 'relative' }}>
+              <img src={photo} alt="Voter Portrait" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.75)', color: '#38bdf8', fontSize: 9, textAlign: 'center', fontWeight: 'bold' }}>
+                FACE {stage}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div className="row" style={{ gap: 6 }}>
+                {stage === 'IN' && bioResult?.status === 'VERIFIED' && (
+                  <Badge tone="low">
+                    <CheckCircle2 size={12} style={{ marginRight: 3, verticalAlign: -1 }} />
+                    <span>✓ Face IN Verified ({bioResult.id_match_confidence}%) • Ballot Issued</span>
+                  </Badge>
+                )}
+                {stage === 'OUT' && bioResult?.status === 'COMPLETED' && (
+                  <Badge tone={bioResult.timing_anomaly?.flag === 'NORMAL' ? 'low' : 'high'}>
+                    <CheckCircle2 size={12} style={{ marginRight: 3, verticalAlign: -1 }} />
+                    <span>✓ Face OUT Attendance Confirmed</span>
+                  </Badge>
+                )}
+                {bioResult?.status === 'FLYING_VOTER_BLOCKED' && (
+                  <Badge tone="high">
+                    <AlertTriangle size={12} style={{ marginRight: 3, verticalAlign: -1 }} />
+                    <span>🚨 Flying Voter Blocked!</span>
+                  </Badge>
+                )}
+                {bioResult?.status === 'ID_PHOTO_MISMATCH' && (
+                  <Badge tone="high">
+                    <AlertTriangle size={12} style={{ marginRight: 3, verticalAlign: -1 }} />
+                    <span>🚨 Identity Impostor Blocked</span>
+                  </Badge>
+                )}
+              </div>
+
+              {/* Timestamp & Ballot Serial Info */}
+              {stage === 'IN' && bioResult?.status === 'VERIFIED' && (
+                <div style={{ fontSize: 12, color: 'var(--text)' }}>
+                  <div>Official Ballot Serial: <b className="mono" style={{ color: '#fbbf24' }}>{bioResult.ballot_serial}</b></div>
+                  <div className="small muted">Check-In Timestamp: <b>{bioResult.face_in_timestamp}</b></div>
+                </div>
+              )}
+
+              {/* Mocked Self-Learned AI Voting Pacing Verdict (Stage OUT) */}
+              {stage === 'OUT' && bioResult?.status === 'COMPLETED' && (
+                <div style={{ fontSize: 12, marginTop: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>
+                    <Clock size={13} />
+                    <span>Total Voting Duration: <b style={{ color: '#38bdf8' }}>{bioResult.duration_formatted}</b></span>
+                  </div>
+                  <div style={{ 
+                    marginTop: 6, 
+                    padding: '8px 10px', 
+                    borderRadius: 8, 
+                    background: bioResult.timing_anomaly?.flag === 'NORMAL' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.15)',
+                    border: bioResult.timing_anomaly?.flag === 'NORMAL' ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)'
+                  }}>
+                    <div style={{ 
+                      fontWeight: 700, 
+                      color: bioResult.timing_anomaly?.flag === 'NORMAL' ? '#22c55e' : '#f43f5e',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}>
+                      {bioResult.timing_anomaly?.flag === 'NORMAL' ? <CheckCircle2 size={13} /> : <AlertOctagon size={13} />}
+                      AI Pacing Verdict: {bioResult.timing_anomaly?.flag} ({bioResult.timing_anomaly?.severity} SEVERITY)
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text)', marginTop: 4, lineHeight: 1.35 }}>
+                      {bioResult.timing_anomaly?.explanation}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <div className="row" style={{ gap: 6 }}>
-              {bioResult?.status === 'VERIFIED' ? (
-                <Badge tone="low">
-                  <CheckCircle2 size={12} style={{ marginRight: 3, verticalAlign: -1 }} />
-                  <span>✓ 1:1 ID Photo Match Confirmed ({bioResult.id_match_confidence}% confidence)</span>
-                </Badge>
-              ) : bioResult?.status === 'ID_PHOTO_MISMATCH' ? (
-                <Badge tone="high">
-                  <AlertTriangle size={12} style={{ marginRight: 3, verticalAlign: -1 }} />
-                  <span>🚨 Impostor Blocked ({bioResult.similarity}% match)</span>
-                </Badge>
-              ) : (
-                <Badge tone="low">
-                  <CheckCircle2 size={12} style={{ marginRight: 3, verticalAlign: -1 }} />
-                  <span>Biometric Vector Indexed (RAM)</span>
-                </Badge>
-              )}
-              {bioResult?.vin && <span className="mono small" style={{ fontWeight: 600 }}>{bioResult.vin}</span>}
+          {/* Quick Simulation Row for Stage OUT AI Anomaly Testing */}
+          {stage === 'OUT' && (
+            <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 10, marginTop: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Zap size={12} color="#fbbf24" />
+                <span>Test Self-Learned AI Anomaly Triggers (Interactive Evaluation):</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="chip small"
+                  onClick={() => testSimulatedCheckout(24, 'RUSH')}
+                  style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f43f5e', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+                >
+                  ⚡ Simulate 24s Rush (&lt;45s Early Anomaly)
+                </button>
+                <button
+                  type="button"
+                  className="chip small"
+                  onClick={() => testSimulatedCheckout(195, 'NORMAL')}
+                  style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.3)' }}
+                >
+                  ⏱️ Simulate 3m 15s (Normal Pace)
+                </button>
+                <button
+                  type="button"
+                  className="chip small"
+                  onClick={() => testSimulatedCheckout(580, 'DELAY')}
+                  style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}
+                >
+                  ⏳ Simulate 9m 40s (&gt;8m Delay Anomaly)
+                </button>
+              </div>
             </div>
+          )}
 
-            <div className="small muted" style={{ lineHeight: 1.35 }}>
-              Local AI Engine: <b>Facenet512</b> (512-D normalized embedding). Cancelable orthogonal salt applied. No duplicate face detected in Central Registry.
-            </div>
-
-            <div style={{ marginTop: 2 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            {stage === 'IN' && bioResult?.status === 'VERIFIED' && (
               <button
                 type="button"
-                className="chip small"
-                onClick={clearPhoto}
-                style={{ cursor: 'pointer' }}
+                className="btn primary small"
+                onClick={() => {
+                  setStage('OUT');
+                  setPhoto(null);
+                  setBioResult(null);
+                }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
-                Retake / Change Photo
+                <span>Proceed to Step 2: Face OUT</span>
+                <ArrowRight size={13} />
               </button>
-            </div>
+            )}
+            <button type="button" className="btn small" onClick={clearSession}>
+              <RefreshCw size={13} style={{ marginRight: 4 }} />
+              Reset Attendance Scan
+            </button>
           </div>
         </div>
       ) : (
-        /* 3. INITIAL EMPTY / SELECTION STATE */
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        /* LIVE CAMERA TRIGGER BUTTON ONLY */
+        <div style={{ display: 'flex', gap: 10 }}>
           <button
             type="button"
-            className="btn"
-            disabled={disabled}
+            className="btn primary"
             onClick={startCamera}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center', padding: '10px 14px' }}
+            disabled={disabled || analyzing}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center', padding: '12px 18px', fontWeight: 700 }}
           >
-            <Camera size={16} />
-            <span>Take Live Photo via Webcam</span>
+            <Camera size={18} />
+            <span>Open Live Attendance Camera (Face {stage})</span>
           </button>
-
-          <label
-            className="btn"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center', padding: '10px 14px', cursor: disabled ? 'not-allowed' : 'pointer' }}
-          >
-            <Upload size={16} />
-            <span>Upload Photo / ID Card</span>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              disabled={disabled}
-              onChange={handleFileUpload}
-              style={{ display: 'none' }}
-            />
-          </label>
-        </div>
-      )}
-
-      {analyzing && (
-        <div className="banner info small" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <RefreshCw size={12} className="animate-spin" />
-          <span>Extracting 512-D local facial vector and scanning Central Database for flying voter duplication...</span>
         </div>
       )}
 
       {errorMsg && (
-        <div className="banner alert" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 10 }}>
-          <AlertTriangle size={18} style={{ color: 'var(--high)', flexShrink: 0, marginTop: 2 }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--high)', marginBottom: 2 }}>
-              COMELEC Mock Registry is Empty
-            </div>
-            <div className="small" style={{ lineHeight: 1.4 }}>
-              {errorMsg}
-            </div>
-            {onGoToRegistry && (
-              <div style={{ marginTop: 8 }}>
-                <button
-                  type="button"
-                  className="btn primary sm"
-                  onClick={onGoToRegistry}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '5px 12px', cursor: 'pointer' }}
-                >
-                  <span>Go to COMELEC Mock Registry</span>
-                  <ArrowRight size={13} />
-                </button>
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            className="chip small"
-            onClick={() => setErrorMsg(null)}
-            style={{ padding: '2px 6px', lineHeight: 1, cursor: 'pointer' }}
-          >
-            ✕
-          </button>
+        <div className="banner bad small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AlertTriangle size={16} />
+          <span>{errorMsg}</span>
         </div>
       )}
     </div>

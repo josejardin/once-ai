@@ -1,6 +1,7 @@
 import os
 import sys
 import uuid
+import time
 import datetime
 import base64
 import numpy as np
@@ -18,8 +19,8 @@ from cloud_db import cloud_db
 
 app = FastAPI(
     title="ONCE AI - Centralized Anti-Flying Voter Verification Engine",
-    description="Physical Ballot Intake Gatekeeper: 100% Local AI on ePLDT Sovereign Cloud",
-    version="4.0.0"
+    description="Physical Ballot Attendance Gatekeeper (Face IN & Face OUT) with Self-Learned AI Pacing Anomaly Detection",
+    version="5.0.0"
 )
 
 app.add_middleware(
@@ -30,9 +31,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# COMELEC Central Voter Registry (Starts completely clean - zero dummy IDs)
+# COMELEC Central Voter Registry
 COMELEC_VOTER_REGISTRY: Dict[str, Dict] = {}
 
+# Attendance & Dual Face Biometric Tracking (Face IN & Face OUT)
+VOTING_ATTENDANCE: Dict[str, Dict] = {}
 AUDIT_LOGS: List[Dict] = []
 BALLOT_ISSUANCES: List[Dict] = []
 PRECINCT_TURNOUT: Dict[str, int] = {
@@ -42,6 +45,114 @@ PRECINCT_TURNOUT: Dict[str, int] = {
     "Precinct 404 - Pasig": 0
 }
 
+# ==============================================================================
+# MOCKED SELF-LEARNED AI VOTING DURATION & PACING ANOMALY ENGINE
+# ==============================================================================
+class VotingDurationAI:
+    def __init__(self):
+        # Seeded historical completion times (in seconds) to bootstrap learning
+        # Typical voting completion duration: ~180s - 240s (3 - 4 minutes)
+        self.history: List[int] = [170, 195, 215, 180, 240, 210, 185, 220, 230, 200, 190, 225]
+        self.outliers: List[Dict] = []
+        self.precinct_durations: Dict[str, List[int]] = {
+            "Precinct 101 - Manila": [180, 210, 195],
+            "Precinct 202 - Quezon City": [205, 225, 215],
+            "Precinct 303 - Makati": [170, 185, 190],
+            "Precinct 404 - Pasig": [220, 240, 230]
+        }
+
+    def get_stats(self) -> Dict:
+        durations = self.history if self.history else [200]
+        mean_val = float(np.mean(durations))
+        std_val = float(max(18.0, np.std(durations)))
+        
+        precinct_stats = {}
+        for p, d_list in self.precinct_durations.items():
+            if d_list:
+                precinct_stats[p] = round(float(np.mean(d_list)), 1)
+            else:
+                precinct_stats[p] = round(mean_val, 1)
+
+        return {
+            "learned_mean_seconds": round(mean_val, 1),
+            "learned_std_seconds": round(std_val, 1),
+            "total_samples": len(self.history),
+            "fastest_seconds": int(min(durations)),
+            "slowest_seconds": int(max(durations)),
+            "nominal_min_seconds": max(45, int(mean_val - 2.0 * std_val)),
+            "nominal_max_seconds": int(mean_val + 2.5 * std_val),
+            "outliers_count": len(self.outliers),
+            "precinct_averages": precinct_stats
+        }
+
+    def evaluate_and_learn(self, voter_id: str, voter_name: str, precinct_id: str, duration_sec: int) -> Dict:
+        stats = self.get_stats()
+        mean_val = stats["learned_mean_seconds"]
+        std_val = stats["learned_std_seconds"]
+        z_score = round((duration_sec - mean_val) / std_val, 2)
+        
+        # Anomaly Detection Logic:
+        # Rush anomaly: Completed in < 45 seconds or z_score < -2.0
+        # Delay anomaly: Took > 480 seconds (8 mins) or z_score > +2.5
+        if duration_sec < 45 or z_score < -2.0:
+            flag = "RUSH_ANOMALY"
+            severity = "HIGH" if duration_sec < 30 else "MODERATE"
+            explanation = (
+                f"SUSPICIOUS RAPID COMPLETION: Ballot submitted in {duration_sec}s, significantly faster "
+                f"than the learned baseline of {int(mean_val)}s (Z-score: {z_score}). "
+                f"Potential indication of unshaded blank ballot, rushed coercion, proxy voting, or booth bypass."
+            )
+        elif duration_sec > 480 or z_score > 2.5:
+            flag = "DELAY_ANOMALY"
+            severity = "HIGH" if duration_sec > 600 else "MODERATE"
+            mins = duration_sec // 60
+            secs = duration_sec % 60
+            explanation = (
+                f"SUSPICIOUS PROTRACTED COMPLETION: Voter remained in booth for {mins}m {secs}s ({duration_sec}s), "
+                f"drastically exceeding the learned baseline of {int(mean_val)}s (Z-score: +{z_score}). "
+                f"Potential indication of ballot tampering, illegal phone/photography in booth, unauthorized assistance, or ballot substitution."
+            )
+        else:
+            flag = "NORMAL"
+            severity = "NONE"
+            explanation = (
+                f"NORMAL PACED COMPLETION: Ballot completed in {duration_sec}s ({duration_sec//60}m {duration_sec%60}s), "
+                f"consistent with the running learned average of {int(mean_val)}s ± {int(std_val)}s."
+            )
+        
+        # Adaptive Learning: dynamically update model distribution with new voter observation
+        self.history.append(duration_sec)
+        if precinct_id in self.precinct_durations:
+            self.precinct_durations[precinct_id].append(duration_sec)
+        else:
+            self.precinct_durations[precinct_id] = [duration_sec]
+
+        eval_result = {
+            "duration_seconds": duration_sec,
+            "duration_formatted": f"{duration_sec//60}m {duration_sec%60}s" if duration_sec >= 60 else f"{duration_sec}s",
+            "flag": flag,
+            "severity": severity,
+            "z_score": z_score,
+            "learned_mean_seconds": round(mean_val, 1),
+            "explanation": explanation,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        if flag != "NORMAL":
+            self.outliers.insert(0, {
+                "voter_id": voter_id,
+                "voter_name": voter_name,
+                "precinct_id": precinct_id,
+                **eval_result
+            })
+
+        return eval_result
+
+duration_ai = VotingDurationAI()
+
+# ==============================================================================
+# REQUEST & RESPONSE SCHEMAS
+# ==============================================================================
 class RegisterVoterRequest(BaseModel):
     name: str
     precinct_id: str
@@ -49,13 +160,21 @@ class RegisterVoterRequest(BaseModel):
     birthdate: Optional[str] = "2001-05-15"
     photo_base64: str
 
-class PrecinctCheckinRequest(BaseModel):
+class FaceInCheckinRequest(BaseModel):
     voter_id: str
     voter_name: Optional[str] = "Registered Citizen"
     precinct_id: str
     image_base64: str
-    liveness_passed: bool
+    liveness_passed: bool = True
     challenges_completed: List[str] = []
+
+class FaceOutCheckoutRequest(BaseModel):
+    voter_id: str
+    voter_name: Optional[str] = "Registered Citizen"
+    precinct_id: str
+    image_base64: str
+    liveness_passed: bool = True
+    simulated_duration_seconds: Optional[int] = None # Allows UI quick-testing of rush or delay anomalies
 
 class SetTTLModeRequest(BaseModel):
     mode: str
@@ -67,14 +186,25 @@ class IssuePhysicalBallotRequest(BaseModel):
     precinct_id: str
     auth_token: str
 
+# ==============================================================================
+# CORE ENDPOINTS
+# ==============================================================================
 @app.get("/")
 def read_root():
+    stats = duration_ai.get_stats()
     return {
-        "service": "ONCE AI Anti-Flying Voter Gatekeeper",
+        "service": "ONCE AI Anti-Flying Voter & Dual Face Attendance Gatekeeper",
         "pipeline": "100% Local AI in RAM (Zero External Cloud APIs)",
-        "voting_mode": "Physical Paper Ballot Shading (COMELEC Standard)",
+        "features": [
+            "Face IN (Ballot Intake)", 
+            "Face OUT (Ballot Feeding & Completion)", 
+            "Mocked Self-Learned AI Voting Pacing Anomaly Detection",
+            "Sovereign Cancelable Biometric Salting (RA 10173)"
+        ],
         "status": "ONLINE",
         "registered_voters_count": len(COMELEC_VOTER_REGISTRY),
+        "active_attendance_count": len(VOTING_ATTENDANCE),
+        "learned_avg_duration_sec": stats["learned_mean_seconds"],
         "ttl_mode": cloud_db.ttl_mode
     }
 
@@ -83,6 +213,7 @@ def get_comelec_voters():
     """Returns all registered voters with official COMELEC ID cards."""
     voters = []
     for vid, data in COMELEC_VOTER_REGISTRY.items():
+        att = VOTING_ATTENDANCE.get(vid)
         voters.append({
             "voter_id": data["voter_id"],
             "vin": data["vin"],
@@ -90,21 +221,33 @@ def get_comelec_voters():
             "birthdate": data["birthdate"],
             "precinct_id": data["precinct_id"],
             "barangay": data["barangay"],
-            "civil_status": data["civil_status"],
-            "citizenship": data["citizenship"],
+            "civil_status": data.get("civil_status", "Single"),
+            "citizenship": data.get("citizenship", "Filipino"),
             "photo_base64": data["photo_base64"],
             "registration_status": data["registration_status"],
-            "biometric_hash": data["biometric_hash"]
+            "biometric_hash": data["biometric_hash"],
+            "has_voted": data.get("has_voted", False),
+            "attendance": {
+                "status": att.get("status") if att else "NOT_CHECKED_IN",
+                "face_in": att.get("face_in_timestamp") if att else None,
+                "face_out": att.get("face_out_timestamp") if att else None,
+                "duration": att.get("duration_formatted") if att else None,
+                "anomaly_flag": att.get("timing_anomaly", {}).get("flag") if att else None
+            }
         })
     return {"voters": voters, "count": len(voters)}
 
 @app.delete("/api/comelec/voters/clear-all")
 def clear_all_registered_voters():
-    """Wipes all registered voters and purges cloud biometric vectors for clean testing."""
+    """Wipes all registered voters, attendance records, and purges cloud biometric vectors."""
     count = len(COMELEC_VOTER_REGISTRY)
     COMELEC_VOTER_REGISTRY.clear()
-    cloud_db.crypto_shred()
+    VOTING_ATTENDANCE.clear()
     BALLOT_ISSUANCES.clear()
+    cloud_db.crypto_shred()
+    global duration_ai
+    duration_ai = VotingDurationAI()
+
     for p in PRECINCT_TURNOUT:
         PRECINCT_TURNOUT[p] = 0
 
@@ -115,14 +258,14 @@ def clear_all_registered_voters():
         "voter_id": "ADMIN_RESET",
         "precinct_id": "ALL_PRECINCTS",
         "event": "REGISTRY_PURGED_FOR_TESTING",
-        "details": f"Removed {count} registered voter IDs. Cloud vectors wiped.",
+        "details": f"Removed {count} registered voter IDs. Attendance records & cloud vectors wiped.",
         "status": "DATABASE_RESET"
     })
 
     return {
         "status": "ALL_VOTERS_PURGED",
         "purged_count": count,
-        "message": "All registered voter records, ballots, and biometric vectors have been completely removed."
+        "message": "All registered voter records, attendance sessions, ballots, and biometric vectors have been completely removed."
     }
 
 @app.post("/api/comelec/register-voter")
@@ -148,7 +291,8 @@ def register_new_citizen(payload: RegisterVoterRequest):
         "photo_base64": payload.photo_base64,
         "registration_status": "REGISTERED / ELIGIBLE",
         "biometric_hash": f"SHA256:{uuid.uuid4().hex[:12]}...",
-        "reference_vector": salted_vec
+        "reference_vector": salted_vec,
+        "has_voted": False
     }
 
     COMELEC_VOTER_REGISTRY[voter_id] = record
@@ -172,9 +316,14 @@ def register_new_citizen(payload: RegisterVoterRequest):
         "message": "Official COMELEC Voter's ID created and biometric vector indexed locally in RAM."
     }
 
-@app.post("/api/biometrics/verify-precinct-checkin")
-def verify_precinct_checkin(payload: PrecinctCheckinRequest):
+# ==============================================================================
+# ATTENDANCE 1: FACE IN (BALLOT INTAKE & CHECK-IN)
+# ==============================================================================
+@app.post("/api/biometrics/verify-face-in")
+@app.post("/api/biometrics/verify-precinct-checkin") # Backwards compatibility alias
+def verify_face_in(payload: FaceInCheckinRequest):
     timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_epoch = time.time()
 
     # 1. Enforce Liveness
     if not payload.liveness_passed:
@@ -184,19 +333,20 @@ def verify_precinct_checkin(payload: PrecinctCheckinRequest):
             "voter_id": payload.voter_id,
             "precinct_id": payload.precinct_id,
             "event": "LIVENESS_REJECTED",
-            "details": "Liveness check unfulfilled.",
+            "details": "Liveness check unfulfilled at Face IN intake terminal.",
             "status": "BLOCKED"
         }
         AUDIT_LOGS.insert(0, audit_entry)
         return {
             "status": "LIVENESS_FAILED",
-            "message": "Liveness check failed. Please look at the camera and perform the challenge."
+            "message": "Liveness check failed. Please look at the intake camera and perform the challenge."
         }
 
     target_voter = COMELEC_VOTER_REGISTRY.get(payload.voter_id)
 
-    # 1. ENFORCE ONE-TIME VOTING RULE (BALLOT ALREADY CAST & LOCKED)
+    # 2. Check if Ballot Already Cast and Session Locked
     if target_voter and target_voter.get("has_voted"):
+        att = VOTING_ATTENDANCE.get(payload.voter_id, {})
         audit_entry = {
             "id": str(uuid.uuid4())[:8],
             "timestamp": timestamp_str,
@@ -209,13 +359,13 @@ def verify_precinct_checkin(payload: PrecinctCheckinRequest):
         AUDIT_LOGS.insert(0, audit_entry)
         return {
             "status": "ALREADY_VOTED_LOCKED",
-            "message": f"CITIZEN ALREADY VOTED: Official ballot {target_voter.get('ballot_serial', 'CEF-1')} was already issued to {target_voter['name']} at {target_voter.get('ballot_issued_at', 'earlier today')}. Electoral law strictly limits one ballot per citizen. Terminal locked.",
+            "message": f"CITIZEN ALREADY VOTED: Official ballot was already cast by {target_voter['name']} at {att.get('face_out_timestamp', 'earlier today')}. Electoral law strictly limits one ballot per citizen. Terminal locked.",
             "voter_name": target_voter["name"],
             "vin": target_voter["vin"],
-            "ballot_issued_at": target_voter.get("ballot_issued_at")
+            "ballot_serial": target_voter.get("ballot_serial")
         }
 
-    # 2. ENFORCE ASSIGNED PRECINCT VALIDATION (CANNOT VOTE OUTSIDE REGISTERED PRECINCT)
+    # 3. Check Assigned Polling Precinct
     if target_voter and target_voter.get("precinct_id") and target_voter["precinct_id"] != payload.precinct_id:
         audit_entry = {
             "id": str(uuid.uuid4())[:8],
@@ -223,13 +373,13 @@ def verify_precinct_checkin(payload: PrecinctCheckinRequest):
             "voter_id": payload.voter_id,
             "precinct_id": payload.precinct_id,
             "event": "WRONG_PRECINCT_INTERCEPTED",
-            "details": f"Citizen {target_voter['name']} assigned to '{target_voter['precinct_id']}' attempted to vote at terminal '{payload.precinct_id}'.",
+            "details": f"Citizen {target_voter['name']} assigned to '{target_voter['precinct_id']}' attempted to check in at '{payload.precinct_id}'.",
             "status": "WRONG_PRECINCT"
         }
         AUDIT_LOGS.insert(0, audit_entry)
         return {
             "status": "WRONG_PRECINCT",
-            "message": f"WRONG PRECINCT: Citizen {target_voter['name']} is officially registered at '{target_voter['precinct_id']}'. This terminal is '{payload.precinct_id}'. Under Philippine election law, you may only vote at your designated polling precinct.",
+            "message": f"WRONG PRECINCT: Citizen {target_voter['name']} is officially registered at '{target_voter['precinct_id']}'. This terminal is '{payload.precinct_id}'.",
             "assigned_precinct": target_voter["precinct_id"],
             "current_precinct": payload.precinct_id,
             "voter_name": target_voter["name"],
@@ -237,10 +387,8 @@ def verify_precinct_checkin(payload: PrecinctCheckinRequest):
         }
 
     try:
-        # 3. Strict RAM-Only Base64 Decoding (Zero Disk I/O)
+        # 4. Strict RAM-Only Base64 Decoding & Vector Extraction
         img_bgr = decode_base64_to_ram_image(payload.image_base64)
-        
-        # 4. 512-Dimensional Local AI Vector Extraction (RAM-only)
         raw_vector = extract_512d_embedding(img_bgr)
         salted_vector = apply_crypto_salt(raw_vector)
 
@@ -251,19 +399,11 @@ def verify_precinct_checkin(payload: PrecinctCheckinRequest):
             stored_ref = np.array(target_voter["reference_vector"], dtype=np.float32)
             id_sim = compute_cosine_similarity(salted_vector, stored_ref)
             
-            # Calibrated Confidence:
-            # DeepFace Facenet512 official verification threshold is 0.70 (cosine distance <= 0.30).
-            # Gatekeeper threshold is calibrated to 0.77 (cosine distance <= 0.23, high FAR assurance).
-            # Matches (0.77 to 0.99) map smoothly to 70% - 99% confidence.
-            # Impostors (< 0.77) map to 0% - 48% confidence.
             if id_sim >= 0.77:
                 confidence_pct = round(70.0 + min(29.5, ((id_sim - 0.77) / 0.23) * 30.0), 1)
             else:
                 confidence_pct = round(max(0.0, (id_sim / 0.77) * 48.0), 1)
 
-            # High-assurance security threshold (0.77):
-            # True citizen (0.81 - 0.95+) passes with 75% - 95%+ confidence.
-            # Impostors (< 0.75) are blocked as ID_PHOTO_MISMATCH.
             if id_sim < 0.77:
                 audit_entry = {
                     "id": str(uuid.uuid4())[:8],
@@ -271,13 +411,13 @@ def verify_precinct_checkin(payload: PrecinctCheckinRequest):
                     "voter_id": payload.voter_id,
                     "precinct_id": payload.precinct_id,
                     "event": "ID_PHOTO_MISMATCH",
-                    "details": f"Live face does not match stored photo on Voter ID ({confidence_pct}% confidence, raw {round(id_sim, 3)}). Impostor blocked.",
+                    "details": f"Live face does not match stored photo on Voter ID ({confidence_pct}% confidence). Impostor blocked.",
                     "status": "IMPOSTOR_BLOCKED"
                 }
                 AUDIT_LOGS.insert(0, audit_entry)
                 return {
                     "status": "ID_PHOTO_MISMATCH",
-                    "message": f"IDENTITY REJECTED: Your live face does NOT match the photo on Voter ID '{target_voter['vin']}'. Match confidence: {confidence_pct}% (Required: ≥ 70%). Impostor check-in blocked.",
+                    "message": f"IDENTITY REJECTED: Your live face does NOT match the photo on Voter ID '{target_voter['vin']}'. Match confidence: {confidence_pct}%. Impostor check-in blocked.",
                     "similarity": confidence_pct,
                     "raw_similarity": round(id_sim, 3),
                     "stored_id_photo": target_voter["photo_base64"]
@@ -285,7 +425,7 @@ def verify_precinct_checkin(payload: PrecinctCheckinRequest):
             else:
                 id_match_confidence = confidence_pct
 
-        # 6. STAGE 2: 1:N CROSS-PRECINCT CENTRALIZED CLOUD SCAN (ANTI-FLYING VOTER)
+        # 6. 1:N CROSS-PRECINCT CENTRALIZED CLOUD SCAN (ANTI-FLYING VOTER)
         is_flying_voter, match, similarity = cloud_db.check_flying_voter(
             salted_vector,
             current_voter_id=payload.voter_id,
@@ -294,7 +434,6 @@ def verify_precinct_checkin(payload: PrecinctCheckinRequest):
         )
         
         if is_flying_voter and match is not None:
-            # CRITICAL ALERT: The exact same face was already registered or voted at another precinct!
             audit_entry = {
                 "id": str(uuid.uuid4())[:8],
                 "timestamp": timestamp_str,
@@ -317,80 +456,223 @@ def verify_precinct_checkin(payload: PrecinctCheckinRequest):
                 "checked_in_at": match["checked_in_at"],
                 "similarity_confidence": round(similarity * 100, 1),
                 "current_precinct_id": payload.precinct_id,
-                "voter_id": payload.voter_id,
-                "cloud_evidence_id": match.get("_id", str(uuid.uuid4())[:8])
+                "voter_id": payload.voter_id
             }
-        else:
-            # 6. Clean Citizen: Record in Centralized Cloud DB with Ephemeral TTL
-            record = cloud_db.insert_biometric_record(
-                voter_id=payload.voter_id,
-                precinct_id=payload.precinct_id,
-                salted_vector=salted_vector
-            )
-            
-            auth_token = f"AUTH-COMELEC-{uuid.uuid4().hex[:10].upper()}"
-            
-            audit_entry = {
-                "id": str(uuid.uuid4())[:8],
-                "timestamp": timestamp_str,
-                "voter_id": payload.voter_id,
-                "precinct_id": payload.precinct_id,
-                "event": "BIOMETRIC_CLEARANCE_GRANTED",
-                "details": f"Identity verified ({id_match_confidence}% match). Authorized for physical paper ballot handoff.",
-                "status": "CLEARED_FOR_PHYSICAL_BALLOT"
-            }
-            AUDIT_LOGS.insert(0, audit_entry)
-            
-            return {
-                "status": "VERIFIED",
-                "message": "Biometric verification successful. Citizen cleared to receive official physical paper ballot.",
-                "voter_id": payload.voter_id,
-                "precinct_id": payload.precinct_id,
-                "auth_token": auth_token,
-                "id_match_confidence": id_match_confidence,
-                "stored_id_photo": target_voter["photo_base64"] if target_voter else None,
-                "expires_at_epoch": record["expires_at_epoch"],
-                "ttl_seconds": record["ttl_seconds"],
-                "ttl_mode": cloud_db.ttl_mode
-            }
+
+        # 7. Record Ephemeral Biometric Vector in Central Cloud DB
+        record = cloud_db.insert_biometric_record(
+            voter_id=payload.voter_id,
+            precinct_id=payload.precinct_id,
+            salted_vector=salted_vector
+        )
+        
+        auth_token = f"AUTH-COMELEC-{uuid.uuid4().hex[:10].upper()}"
+        ballot_serial = f"BALLOT-CEF1-{uuid.uuid4().hex[:8].upper()}"
+
+        # Initialize or Update Attendance Ledger for FACE IN
+        voter_name = target_voter["name"] if target_voter else payload.voter_name
+        vin_num = target_voter["vin"] if target_voter else f"VIN-{payload.voter_id[-4:]}"
+
+        VOTING_ATTENDANCE[payload.voter_id] = {
+            "voter_id": payload.voter_id,
+            "voter_name": voter_name,
+            "vin": vin_num,
+            "precinct_id": payload.precinct_id,
+            "barangay": target_voter.get("barangay", "Barangay Malate, Manila") if target_voter else "Barangay Malate, Manila",
+            "status": "IN_BOOTH (BALLOT ISSUED)",
+            "face_in_timestamp": timestamp_str,
+            "face_in_epoch": current_epoch,
+            "photo_id_base64": target_voter.get("photo_base64") if target_voter else None,
+            "photo_in_base64": payload.image_base64,
+            "face_out_timestamp": None,
+            "face_out_epoch": None,
+            "photo_out_base64": None,
+            "duration_seconds": None,
+            "duration_formatted": None,
+            "timing_anomaly": None,
+            "id_match_confidence": id_match_confidence,
+            "ballot_serial": ballot_serial
+        }
+
+        if target_voter:
+            target_voter["ballot_serial"] = ballot_serial
+            target_voter["ballot_issued_at"] = timestamp_str
+            target_voter["registration_status"] = "BALLOT ISSUED (IN BOOTH)"
+
+        audit_entry = {
+            "id": str(uuid.uuid4())[:8],
+            "timestamp": timestamp_str,
+            "voter_id": payload.voter_id,
+            "precinct_id": payload.precinct_id,
+            "event": "FACE_IN_CHECKIN_SUCCESS",
+            "details": f"Face IN verified ({id_match_confidence}% match). Physical ballot {ballot_serial} handed off. Citizen in booth.",
+            "status": "CLEARED_FACE_IN"
+        }
+        AUDIT_LOGS.insert(0, audit_entry)
+        
+        return {
+            "status": "VERIFIED",
+            "step": "FACE_IN_COMPLETE",
+            "message": f"Biometric Attendance IN successful! Ballot {ballot_serial} handed to citizen. Shading in booth.",
+            "voter_id": payload.voter_id,
+            "precinct_id": payload.precinct_id,
+            "auth_token": auth_token,
+            "ballot_serial": ballot_serial,
+            "id_match_confidence": id_match_confidence,
+            "face_in_timestamp": timestamp_str,
+            "stored_id_photo": target_voter["photo_base64"] if target_voter else None
+        }
 
     except Exception as e:
-        print(f"[verify_precinct_checkin] Error: {e}")
+        print(f"[verify_face_in] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==============================================================================
+# ATTENDANCE 2: FACE OUT (BALLOT FEEDING, EXIT, & TIMING ANOMALY AI)
+# ==============================================================================
+@app.post("/api/biometrics/verify-face-out")
+def verify_face_out(payload: FaceOutCheckoutRequest):
+    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_epoch = time.time()
+
+    # 1. Locate Attendance Session from Face IN
+    attendance_rec = VOTING_ATTENDANCE.get(payload.voter_id)
+    target_voter = COMELEC_VOTER_REGISTRY.get(payload.voter_id)
+
+    if not attendance_rec or not attendance_rec.get("face_in_epoch"):
+        return {
+            "status": "NO_FACE_IN_FOUND",
+            "message": f"CHECK-OUT REJECTED: No active Face IN session found for voter ID '{payload.voter_id}'. The citizen must check in at the intake gatekeeper first."
+        }
+
+    if attendance_rec.get("face_out_epoch"):
+        return {
+            "status": "ALREADY_CHECKED_OUT",
+            "message": f"CITIZEN ALREADY CHECKED OUT: Ballot was already fed into the ballot box at {attendance_rec['face_out_timestamp']}.",
+            "duration": attendance_rec["duration_formatted"],
+            "timing_anomaly": attendance_rec["timing_anomaly"]
+        }
+
+    try:
+        # 2. Extract Face OUT vector in RAM
+        img_bgr = decode_base64_to_ram_image(payload.image_base64)
+        raw_vector = extract_512d_embedding(img_bgr)
+        salted_vector = apply_crypto_salt(raw_vector)
+
+        # 3. Verify that the face exiting is indeed the SAME person who checked in (1:1 Exit Verification)
+        id_match_confidence = 98.5
+        if target_voter and target_voter.get("reference_vector") is not None:
+            stored_ref = np.array(target_voter["reference_vector"], dtype=np.float32)
+            id_sim = compute_cosine_similarity(salted_vector, stored_ref)
+            
+            if id_sim < 0.77:
+                audit_entry = {
+                    "id": str(uuid.uuid4())[:8],
+                    "timestamp": timestamp_str,
+                    "voter_id": payload.voter_id,
+                    "precinct_id": payload.precinct_id,
+                    "event": "EXIT_FACE_MISMATCH",
+                    "details": f"Face presenting at ballot box does NOT match citizen who received ballot. Exit blocked.",
+                    "status": "TAMPERING_INTERCEPTED"
+                }
+                AUDIT_LOGS.insert(0, audit_entry)
+                return {
+                    "status": "EXIT_FACE_MISMATCH",
+                    "message": "SECURITY ALERT: The face presenting at the ballot box does NOT match the citizen who checked in. Possible booth substitution or ballot snatching.",
+                    "stored_id_photo": target_voter["photo_base64"]
+                }
+            else:
+                id_match_confidence = round(70.0 + min(29.5, ((id_sim - 0.77) / 0.23) * 30.0), 1)
+
+        # 4. Compute Duration from Face IN to Face OUT
+        if payload.simulated_duration_seconds is not None and payload.simulated_duration_seconds > 0:
+            duration_sec = payload.simulated_duration_seconds
+        else:
+            duration_sec = max(1, int(current_epoch - attendance_rec["face_in_epoch"]))
+
+        # 5. Run Mocked Self-Learned AI Voting Pacing Engine
+        ai_eval = duration_ai.evaluate_and_learn(
+            voter_id=payload.voter_id,
+            voter_name=attendance_rec["voter_name"],
+            precinct_id=payload.precinct_id,
+            duration_sec=duration_sec
+        )
+
+        # 6. Finalize Attendance Record
+        attendance_rec["status"] = "COMPLETED (BALLOT CAST)"
+        attendance_rec["face_out_timestamp"] = timestamp_str
+        attendance_rec["face_out_epoch"] = current_epoch
+        attendance_rec["photo_out_base64"] = payload.image_base64
+        attendance_rec["duration_seconds"] = duration_sec
+        attendance_rec["duration_formatted"] = ai_eval["duration_formatted"]
+        attendance_rec["timing_anomaly"] = ai_eval
+
+        # Mark COMELEC Registry & Turnout
+        if target_voter:
+            target_voter["has_voted"] = True
+            target_voter["registration_status"] = "VOTED & COMPLETED (LOCKED)"
+            target_voter["completed_at"] = timestamp_str
+            target_voter["duration_seconds"] = duration_sec
+
+        PRECINCT_TURNOUT[payload.precinct_id] = PRECINCT_TURNOUT.get(payload.precinct_id, 0) + 1
+
+        BALLOT_ISSUANCES.append({
+            "ballot_serial": attendance_rec["ballot_serial"],
+            "voter_id": payload.voter_id,
+            "voter_name": attendance_rec["voter_name"],
+            "vin": attendance_rec["vin"],
+            "precinct_id": payload.precinct_id,
+            "face_in_timestamp": attendance_rec["face_in_timestamp"],
+            "face_out_timestamp": timestamp_str,
+            "duration_seconds": duration_sec,
+            "pacing_verdict": ai_eval["flag"]
+        })
+
+        audit_entry = {
+            "id": str(uuid.uuid4())[:8],
+            "timestamp": timestamp_str,
+            "voter_id": payload.voter_id,
+            "precinct_id": payload.precinct_id,
+            "event": "FACE_OUT_CHECKOUT_COMPLETE",
+            "details": f"Ballot cast into box. Voting duration: {ai_eval['duration_formatted']}. AI Pacing Verdict: {ai_eval['flag']} ({ai_eval['severity']}).",
+            "status": "COMPLETED"
+        }
+        AUDIT_LOGS.insert(0, audit_entry)
+
+        return {
+            "status": "COMPLETED",
+            "step": "FACE_OUT_COMPLETE",
+            "message": f"Biometric Attendance OUT verified! Paper ballot cast into box. Duration: {ai_eval['duration_formatted']}.",
+            "voter_id": payload.voter_id,
+            "voter_name": attendance_rec["voter_name"],
+            "precinct_id": payload.precinct_id,
+            "ballot_serial": attendance_rec["ballot_serial"],
+            "face_in_timestamp": attendance_rec["face_in_timestamp"],
+            "face_out_timestamp": timestamp_str,
+            "duration_seconds": duration_sec,
+            "duration_formatted": ai_eval["duration_formatted"],
+            "timing_anomaly": ai_eval,
+            "id_match_confidence": id_match_confidence
+        }
+
+    except Exception as e:
+        print(f"[verify_face_out] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==============================================================================
+# PHYSICAL BALLOT ISSUANCE (LEGACY COMPATIBILITY)
+# ==============================================================================
 @app.post("/api/ballot/issue-physical")
 def issue_physical_ballot(payload: IssuePhysicalBallotRequest):
     timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ballot_serial = f"BALLOT-CEF1-{uuid.uuid4().hex[:8].upper()}"
 
-    PRECINCT_TURNOUT[payload.precinct_id] = PRECINCT_TURNOUT.get(payload.precinct_id, 0) + 1
-
-    # Mark voter as officially VOTED and lock their record
     if payload.voter_id in COMELEC_VOTER_REGISTRY:
-        COMELEC_VOTER_REGISTRY[payload.voter_id]["has_voted"] = True
-        COMELEC_VOTER_REGISTRY[payload.voter_id]["ballot_issued_at"] = timestamp_str
         COMELEC_VOTER_REGISTRY[payload.voter_id]["ballot_serial"] = ballot_serial
-        COMELEC_VOTER_REGISTRY[payload.voter_id]["registration_status"] = "BALLOT ISSUED (LOCKED)"
+        COMELEC_VOTER_REGISTRY[payload.voter_id]["ballot_issued_at"] = timestamp_str
 
-    BALLOT_ISSUANCES.append({
-        "ballot_serial": ballot_serial,
-        "voter_id": payload.voter_id,
-        "voter_name": payload.voter_name,
-        "vin": payload.vin,
-        "precinct_id": payload.precinct_id,
-        "auth_token": payload.auth_token,
-        "timestamp": timestamp_str
-    })
-
-    AUDIT_LOGS.insert(0, {
-        "id": str(uuid.uuid4())[:8],
-        "timestamp": timestamp_str,
-        "voter_id": payload.voter_id,
-        "precinct_id": payload.precinct_id,
-        "event": "PHYSICAL_BALLOT_ISSUED",
-        "details": f"Physical paper ballot {ballot_serial} handed to voter. Proceeding to shading booth.",
-        "status": "BALLOT_HANDED_OFF"
-    })
+    if payload.voter_id in VOTING_ATTENDANCE:
+        VOTING_ATTENDANCE[payload.voter_id]["ballot_serial"] = ballot_serial
 
     return {
         "status": "BALLOT_ISSUED",
@@ -398,6 +680,90 @@ def issue_physical_ballot(payload: IssuePhysicalBallotRequest):
         "message": "Physical paper ballot & marker officially issued. Citizen proceeding to voting booth to shade ballot.",
         "timestamp": timestamp_str
     }
+
+# ==============================================================================
+# ANALYTICS & DOSSIER REPORTING ENDPOINTS
+# ==============================================================================
+@app.get("/api/ballot/duration-analytics")
+def get_duration_analytics():
+    """Returns real-time voting duration metrics, distribution bins, and AI anomaly stats."""
+    stats = duration_ai.get_stats()
+    
+    # Calculate distribution buckets across all recorded durations
+    all_d = duration_ai.history
+    buckets = {
+        "< 1 min (Suspicious Rush)": sum(1 for d in all_d if d < 60),
+        "1 - 2 mins": sum(1 for d in all_d if 60 <= d < 120),
+        "2 - 4 mins (Nominal Baseline)": sum(1 for d in all_d if 120 <= d < 240),
+        "4 - 6 mins": sum(1 for d in all_d if 240 <= d < 360),
+        "6 - 8 mins": sum(1 for d in all_d if 360 <= d < 480),
+        "> 8 mins (Suspicious Delay)": sum(1 for d in all_d if d >= 480)
+    }
+
+    # Hourly throughput simulation
+    recent_records = list(VOTING_ATTENDANCE.values())
+    
+    return {
+        "stats": stats,
+        "distribution_buckets": buckets,
+        "outliers": duration_ai.outliers,
+        "total_completed_attendance": sum(1 for a in recent_records if a.get("status") == "COMPLETED (BALLOT CAST)"),
+        "active_in_booth_count": sum(1 for a in recent_records if a.get("status") == "IN_BOOTH (BALLOT ISSUED)"),
+        "recent_attendances": recent_records[-8:]
+    }
+
+@app.get("/api/ballot/attendance")
+def get_all_attendance():
+    """Returns complete list of 2-step facial attendance records (Face IN + Face OUT)."""
+    return {
+        "attendance": list(VOTING_ATTENDANCE.values()),
+        "total": len(VOTING_ATTENDANCE)
+    }
+
+@app.get("/api/voters/dossier/{voter_id}")
+def get_voter_dossier(voter_id: str):
+    """
+    Returns complete AI dossier for a voter, including:
+    - Official COMELEC ID photo
+    - Live photo captured at Face IN
+    - Live photo captured at Face OUT
+    - Attendance timestamps & duration
+    - Self-learned AI pacing verdict & anomaly score
+    """
+    voter = COMELEC_VOTER_REGISTRY.get(voter_id)
+    att = VOTING_ATTENDANCE.get(voter_id)
+
+    if not voter and not att:
+        raise HTTPException(status_code=404, detail=f"Voter ID '{voter_id}' not found.")
+
+    dossier = {
+        "voter_id": voter_id,
+        "name": voter["name"] if voter else att.get("voter_name", "UNKNOWN"),
+        "vin": voter["vin"] if voter else att.get("vin", "UNKNOWN"),
+        "precinct_id": voter.get("precinct_id") if voter else att.get("precinct_id"),
+        "barangay": voter.get("barangay") if voter else att.get("barangay"),
+        "birthdate": voter.get("birthdate", "2000-01-01") if voter else "2000-01-01",
+        "civil_status": voter.get("civil_status", "Single") if voter else "Single",
+        "citizenship": voter.get("citizenship", "Filipino") if voter else "Filipino",
+        "registration_status": voter.get("registration_status") if voter else "IN ATTENDANCE",
+        "has_voted": voter.get("has_voted", False) if voter else (att.get("status") == "COMPLETED (BALLOT CAST)"),
+        "ballot_serial": voter.get("ballot_serial") if voter else att.get("ballot_serial"),
+        
+        # Biometric Imagery (RAM & ID vectors)
+        "photo_id_base64": voter.get("photo_base64") if voter else att.get("photo_id_base64"),
+        "photo_in_base64": att.get("photo_in_base64") if att else None,
+        "photo_out_base64": att.get("photo_out_base64") if att else None,
+
+        # Attendance Timestamps & Timing Anomaly AI
+        "face_in_timestamp": att.get("face_in_timestamp") if att else None,
+        "face_out_timestamp": att.get("face_out_timestamp") if att else None,
+        "duration_seconds": att.get("duration_seconds") if att else None,
+        "duration_formatted": att.get("duration_formatted") if att else None,
+        "timing_anomaly": att.get("timing_anomaly") if att else None,
+        "id_match_confidence": att.get("id_match_confidence", 98.2) if att else 98.2
+    }
+
+    return dossier
 
 @app.get("/api/ballot/turnout")
 def get_turnout():
@@ -414,6 +780,7 @@ def get_cloud_status():
     status["recent_audit_events"] = AUDIT_LOGS[:8]
     status["total_physical_ballots_issued"] = sum(PRECINCT_TURNOUT.values())
     status["registered_voters_count"] = len(COMELEC_VOTER_REGISTRY)
+    status["active_attendance_count"] = len(VOTING_ATTENDANCE)
     return status
 
 @app.post("/api/biometrics/set-ttl-mode")

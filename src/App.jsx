@@ -5,7 +5,7 @@ import Dossier from './components/Dossier.jsx'
 import { 
   LayoutGrid, ScanFace, Map, Users, FolderSearch, 
   MessageSquareText, TrendingUp, FileText, Settings as SettingsIcon,
-  ShieldCheck, User, LogOut 
+  ShieldCheck, User
 } from 'lucide-react'
 
 import Dashboard from './pages/Dashboard.jsx'
@@ -17,6 +17,7 @@ import Chatbot from './pages/Chatbot.jsx'
 import Analytics from './pages/Analytics.jsx'
 import AuditLogs from './pages/AuditLogs.jsx'
 import SettingsPage from './pages/Settings.jsx'
+import PublicGeoMap from './pages/PublicGeoMap.jsx'
 
 const MAIN_MENU = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid, el: Dashboard },
@@ -40,16 +41,19 @@ const HASH_ALIASES = {
   screening: 'identification',
   comelec: 'identification',
   system: 'audit',
+  'public-map': 'public-map',
+  'live-tracking': 'public-map'
 }
 
 const readHash = () => {
-  const raw = location.hash.replace('#/', '')
+  const raw = location.hash.replace('#/', '').split('?')[0]
   const resolved = HASH_ALIASES[raw] || raw
+  if (resolved === 'public-map') return 'public-map'
   return (ALL_PAGES.find((p) => p.id === resolved) || MAIN_MENU[0]).id
 }
 
 export default function App() {
-  const { state, dispatch, summary, openId, openApp, toast } = useApp()
+  const { state, summary, openId, openApp, toast } = useApp()
   const [page, setPage] = useState(readHash)
 
   useEffect(() => {
@@ -65,6 +69,11 @@ export default function App() {
     document.querySelector('.main')?.scrollTo(0, 0) 
   }
 
+  // Standalone Public View (for external observers, watchdogs, public embedded link)
+  if (page === 'public-map') {
+    return <PublicGeoMap />
+  }
+
   const Page = ALL_PAGES.find((p) => p.id === page)?.el || Dashboard
 
   return (
@@ -77,7 +86,7 @@ export default function App() {
           </div>
           <div>
             <div className="brand-title">ONCE AI</div>
-            <div className="brand-sub">Election Oversight System</div>
+            <div className="brand-sub">COMELEC Election Oversight</div>
           </div>
         </div>
 
@@ -116,34 +125,25 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Bottom User Profile */}
+        {/* Bottom User Profile (Exclusively COMELEC Administrator) */}
         <div className="sidebar-user">
-          <div className="user-avatar">
-            <User size={16} />
+          <div className="user-avatar" style={{ background: '#c0272d' }}>
+            <User size={16} color="#ffffff" />
           </div>
           <div className="user-info">
-            <div className="user-name">Administrator</div>
-            <div className="user-sub">System Account</div>
+            <div className="user-name">COMELEC Staff</div>
+            <div className="user-sub" style={{ color: '#fbbf24', fontWeight: 600 }}>Administrator Account</div>
           </div>
-          <button 
-            className="user-logout" 
-            title="Switch Demo Role" 
-            onClick={() => {
-              const roles = ['admin', 'erb', 'viewer']
-              const next = roles[(roles.indexOf(state.role) + 1) % roles.length]
-              dispatch({ type: 'role', role: next })
-            }}
-          >
-            <LogOut size={16} />
-          </button>
         </div>
       </aside>
 
       <div className="main">
         <header className="topbar">
           <span className="badge sim" title="All records are fictional">SYNTHETIC DEMO DATA</span>
-          <span className="muted small grow">Decision-support for the Election Registration Board. Never an automatic approval or rejection.</span>
-          <span className="small muted">{ROLES[state.role]?.label || 'Administrator'}</span>
+          <span className="muted small grow">Decision-support for COMELEC Election Registration Board. Never an automatic disqualification.</span>
+          <span className="badge ok" style={{ fontWeight: 700 }}>
+            {ROLES[state.role]?.label || 'COMELEC Staff / Administrator'}
+          </span>
         </header>
         <Page go={go} />
       </div>

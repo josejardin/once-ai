@@ -30,9 +30,9 @@ function normalAddr(b, purok) {
   const forms = [
     `Purok ${purok}, Brgy. ${n}`,
     `Prk ${purok} ${n}`,
-    `${rint(1, 250)} ${st} St., Purok ${purok}, Barangay ${n}, Sta. Demo`,
+    `${rint(1, 250)} ${st} St., Purok ${purok}, Barangay ${n}, Manila`,
     `Brgy ${n}, Purok ${words[purok]}`,
-    `${st} Street, Brgy. ${n}, Santa Demo, Nueva Demo`,
+    `${st} Street, Brgy. ${n}, City of Manila, Metro Manila`,
     `Purok${purok} Bgy ${n}`,
     `tapat ng ${pick(r, ['simbahan', 'palengke', 'eskwelahan', 'basketball court', 'tulay'])}, Brgy. ${n}`,
   ]
@@ -79,7 +79,7 @@ batchesA.forEach(([bid, cnt], bi) => {
     const mismatch = k < 11
     const variants = [
       `Sitio Riverside, Purok 3, Brgy. Sampaguita`,
-      `Riverside, Prk 3, Barangay Sampaguita, Sta. Demo`,
+      `Riverside, Prk 3, Barangay Sampaguita, Manila`,
       `SITIO RIVERSIDE PUROK 3 BRGY SAMPAGUITA`,
       `Sitio Riverside Brgy Sampagita`,
     ]

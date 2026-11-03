@@ -232,6 +232,39 @@ tbody tr:last-child td { border-bottom: 0; }
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--blue) 60%, transparent); outline-offset: 2px; border-radius: 6px; }
 .hero-stat:focus-visible, .hero-cta:focus-visible, .page-head :focus-visible { outline-color: #fff; }
 
+/* Case queue resolution animation */
+@keyframes caseResolvedOut {
+  0% {
+    background-color: rgba(34, 197, 94, 0.25);
+    transform: scale(1);
+    opacity: 1;
+  }
+  35% {
+    background-color: rgba(34, 197, 94, 0.45);
+    transform: scale(1.01);
+    box-shadow: 0 4px 18px rgba(34, 197, 94, 0.35);
+    opacity: 1;
+  }
+  70% {
+    background-color: rgba(34, 197, 94, 0.2);
+    transform: translateX(16px);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateX(50px);
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+.case-resolving {
+  animation: caseResolvedOut 1.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+
+
 @media (max-width: 1100px) { .page-head { padding: 22px; } .cluster-panel { position: static; width: auto; margin-top: 12px; max-height: none; } }
 @media (max-width: 760px) { .hero-stat b { font-size: 30px; } .hero-stat { min-width: 0; flex: 1; } .flow { grid-template-columns: repeat(2, 1fr); row-gap: 18px; } .flow .step::after { display: none; } .page { padding: 14px; gap: 18px; } .qrow { padding: 8px 10px; gap: 10px; } }
 

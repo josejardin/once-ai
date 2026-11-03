@@ -5,13 +5,11 @@ import { cyrb53 } from './lib/rng.js'
 
 const KEY = 'onceai.prototype.v3'
 export const ROLES = {
-  viewer: { label: 'Viewer (read-only)', canEdit: false, canConfig: false },
-  reviewer: { label: 'ERB Reviewer', canEdit: true, canConfig: false },
-  admin: { label: 'Administrator', canEdit: true, canConfig: true },
+  admin: { label: 'COMELEC Staff / Administrator', canEdit: true, canConfig: true },
 }
 
 const initial = {
-  role: 'reviewer',
+  role: 'admin',
   theme: 'light',
   config: DEFAULT_CONFIG,
   extraApps: [],
@@ -24,14 +22,17 @@ const initial = {
 function load() {
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) return { ...initial, ...JSON.parse(raw) }
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      return { ...initial, ...parsed, role: 'admin' }
+    }
   } catch (e) { /* storage unavailable */ }
   return initial
 }
 
 function makeAudit(state, entry) {
   const prev = state.audit.length ? state.audit[state.audit.length - 1].hash : 'GENESIS'
-  const base = { id: state.audit.length + 1, ts: new Date().toISOString(), role: state.role, ...entry }
+  const base = { id: state.audit.length + 1, ts: new Date().toISOString(), role: 'admin', ...entry }
   return { ...base, prevHash: prev, hash: cyrb53(prev + JSON.stringify(base)) }
 }
 
@@ -39,24 +40,24 @@ function reducer(state, a) {
   const log = (entry) => [...state.audit, makeAudit(state, entry)]
   const now = new Date().toISOString()
   switch (a.type) {
-    case 'role': return { ...state, role: a.role, audit: log({ action: 'ROLE_SWITCH', target: a.role, detail: `Demo role switched to ${ROLES[a.role].label} (no real authentication in the prototype)` }) }
+    case 'role': return { ...state, role: 'admin' }
     case 'theme': return { ...state, theme: a.theme }
     case 'config': return { ...state, config: a.config, audit: log({ action: 'CONFIG_CHANGE', target: 'screening-config', detail: a.detail }) }
     case 'addApp': return { ...state, extraApps: [...state.extraApps, a.app], audit: log({ action: 'APPLICATION_INTAKE', target: a.app.id, detail: `Application entered via Registration Intake; address standardized and screened` }) }
     case 'caseUpdate': {
       const cur = caseOf(state.caseState, a.id)
-      const next = { ...cur, ...a.patch, history: [...cur.history, { ts: now, role: state.role, text: a.text }] }
+      const next = { ...cur, ...a.patch, history: [...cur.history, { ts: now, role: 'admin', text: a.text }] }
       return { ...state, caseState: { ...state.caseState, [a.id]: next }, audit: log({ action: a.action || 'CASE_UPDATE', target: a.id, detail: a.text }) }
     }
     case 'note': {
       const cur = caseOf(state.caseState, a.id)
-      const next = { ...cur, notes: [...cur.notes, { ts: now, role: state.role, text: a.text }], history: [...cur.history, { ts: now, role: state.role, text: 'Reviewer note added' }] }
+      const next = { ...cur, notes: [...cur.notes, { ts: now, role: 'admin', text: a.text }], history: [...cur.history, { ts: now, role: 'admin', text: 'Reviewer note added' }] }
       return { ...state, caseState: { ...state.caseState, [a.id]: next }, audit: log({ action: 'NOTE_ADDED', target: a.id, detail: a.text.slice(0, 140) }) }
     }
     case 'indicatorReview': return { ...state, indicatorReview: { ...state.indicatorReview, [a.key]: a.value }, audit: log({ action: 'INDICATOR_REVIEW', target: a.key, detail: `Indicator review status set to "${a.value}"` }) }
     case 'clusterReview': return { ...state, clusterReview: { ...state.clusterReview, [a.id]: a.value }, audit: log({ action: 'CLUSTER_REVIEW', target: a.id, detail: `Cluster review status set to "${a.value}"` }) }
     case 'logView': return { ...state, audit: log({ action: a.action, target: a.target, detail: a.detail }) }
-    case 'reset': return { ...initial, role: state.role, theme: state.theme, audit: [makeAudit({ ...initial, role: state.role }, { action: 'DEMO_RESET', target: 'all', detail: 'Demo data reset to the synthetic seed state' })] }
+    case 'reset': return { ...initial, role: 'admin', theme: state.theme, audit: [makeAudit({ ...initial, role: 'admin' }, { action: 'DEMO_RESET', target: 'all', detail: 'Demo data reset to the synthetic seed state' })] }
     default: return state
   }
 }
@@ -75,7 +76,7 @@ export function AppProvider({ children }) {
   const allApps = useMemo(() => [...SEED_APPS, ...state.extraApps], [state.extraApps])
   const result = useMemo(() => analyze(allApps, state.config), [allApps, state.config])
   const summary = useMemo(() => summarize(result, state.caseState), [result, state.caseState])
-  const perm = ROLES[state.role]
+  const perm = ROLES.admin
 
   const value = { state, dispatch, result, summary, perm, openId, openApp: setOpenId, toast, notify: setToast, allApps }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

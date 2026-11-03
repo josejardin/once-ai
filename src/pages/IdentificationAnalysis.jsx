@@ -60,6 +60,59 @@ export default function IdentificationAnalysis() {
   const [enrollPhoto, setEnrollPhoto] = useState(null)
   const [enrolling, setEnrolling] = useState(false)
   const [registrySearch, setRegistrySearch] = useState('')
+  const enrollVideoRef = useRef(null)
+  const enrollStreamRef = useRef(null)
+  const [enrollCamActive, setEnrollCamActive] = useState(false)
+
+  const startEnrollCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 480 }, height: { ideal: 480 }, facingMode: 'user' }
+      })
+      enrollStreamRef.current = stream
+      setEnrollCamActive(true)
+      if (enrollVideoRef.current) {
+        enrollVideoRef.current.srcObject = stream
+        enrollVideoRef.current.play()
+      }
+    } catch (err) {
+      console.warn('Webcam access error in enrollment:', err)
+      alert('Could not start live webcam. Please grant camera permission.')
+    }
+  }
+
+  const stopEnrollCamera = () => {
+    if (enrollStreamRef.current) {
+      enrollStreamRef.current.getTracks().forEach((t) => t.stop())
+      enrollStreamRef.current = null
+    }
+    setEnrollCamActive(false)
+  }
+
+  const snapEnrollPhoto = () => {
+    if (!enrollVideoRef.current) return
+    const v = enrollVideoRef.current
+    const canvas = document.createElement('canvas')
+    canvas.width = 256
+    canvas.height = 256
+    const ctx = canvas.getContext('2d')
+    const size = Math.min(v.videoWidth || 256, v.videoHeight || 256)
+    const sx = ((v.videoWidth || 256) - size) / 2
+    const sy = ((v.videoHeight || 256) - size) / 2
+    ctx.drawImage(v, sx, sy, size, size, 0, 0, 256, 256)
+    const b64 = canvas.toDataURL('image/jpeg', 0.88)
+    setEnrollPhoto(b64)
+    stopEnrollCamera()
+  }
+
+  useEffect(() => {
+    if (showEnrollModal && !enrollPhoto) {
+      startEnrollCamera()
+    } else if (!showEnrollModal) {
+      stopEnrollCamera()
+    }
+    return () => stopEnrollCamera()
+  }, [showEnrollModal])
 
   const live = useMemo(() => normalizeAddress(addr, 'preview'), [addr])
   useEffect(() => () => preview && URL.revokeObjectURL(preview), [preview])
@@ -77,6 +130,39 @@ export default function IdentificationAnalysis() {
     fetchVoters()
   }, [])
 
+  const handleBiometricChange = (bioData) => {
+    setBiometricData(bioData)
+    if (!bioData) return
+    const vId = bioData.voter_id || selectedVoter?.voter_id
+    if (!vId) return
+
+    const anomaly = bioData.timing_anomaly
+    const isAnomaly = (anomaly?.flag && anomaly.flag !== 'NORMAL') || bioData.status === 'FLYING_VOTER_BLOCKED'
+
+    if (isAnomaly) {
+      const flagName = bioData.status === 'FLYING_VOTER_BLOCKED' ? 'FLYING_VOTER_BLOCKED' : anomaly.flag
+      const flagReason = bioData.status === 'FLYING_VOTER_BLOCKED'
+        ? 'Biometric facial mismatch: Scanned face does not match registered COMELEC ID card.'
+        : `${flagName}: Completed in ${bioData.duration} (${anomaly.reason || 'Duration outlier'})`
+
+      dispatch({
+        type: 'caseUpdate',
+        id: vId,
+        patch: {
+          status: 'Under Review',
+          suspectedFlag: flagName,
+          timing_anomaly: anomaly,
+          duration: bioData.duration,
+          stage: bioData.stage,
+          photo_base64: bioData.photo_base64
+        },
+        text: `🚨 SUSPECTED ANOMALY TRIGGERED: ${flagName} - ${flagReason}`,
+        action: 'ANOMALY_TRIGGERED'
+      })
+      notify(`🚨 Suspected Flag [${flagName}] logged for ${vId}! Viewable in Investigation Cases.`)
+    }
+  }
+
   const submitApplication = () => {
     if (!name.trim() || !addr.trim()) { 
       notify('Applicant name and declared address are required.')
@@ -84,44 +170,70 @@ export default function IdentificationAnalysis() {
     }
     const n = state.extraApps.length + 1
     const id = `APP-N${String(n).padStart(3, '0')}`
+    const hasAnomaly = biometricData?.timing_anomaly?.flag && biometricData.timing_anomaly.flag !== 'NORMAL'
+    const appRecord = {
+      id, 
+      name: name.trim(), 
+      age: Number(age) || 18, 
+      type, 
+      previousBarangayId: null, 
+      rawAddress: addr.trim(),
+      submittedAt: new Date().toISOString(), 
+      submittedVia: 'Walk-in', 
+      batchId: null, 
+      supportingDoc: null, 
+      yearsAtAddress: undefined, 
+      synthetic: false,
+      photo_base64: biometricData?.photo_base64 || selectedVoter?.photo_base64 || null,
+      issue: hasAnomaly ? biometricData.timing_anomaly.flag : null,
+      timing_anomaly: hasAnomaly ? biometricData.timing_anomaly : null,
+      duration_formatted: biometricData?.duration,
+      label: hasAnomaly ? 'High' : 'Moderate',
+      score: hasAnomaly ? 95 : 35,
+      biometrics: biometricData ? {
+        enrolled: true,
+        voter_id: biometricData.voter_id,
+        vin: biometricData.vin,
+        hash: biometricData.biometric_hash,
+        status: biometricData.status
+      } : (selectedVoter ? {
+        enrolled: true,
+        voter_id: selectedVoter.voter_id,
+        vin: selectedVoter.vin,
+        hash: `VERIFIED-1:1:${selectedVoter.voter_id}`,
+        status: 'VERIFIED'
+      } : null),
+      document: file ? { 
+        filename: file.name, 
+        scanQuality: 0.8, 
+        pages: 1, 
+        embedding: simulatedEmbeddingFromFile(file.name, file.size), 
+        simulatedFromFile: true 
+      } : null,
+    }
+
     dispatch({
       type: 'addApp',
-      app: {
-        id, 
-        name: name.trim(), 
-        age: Number(age) || 18, 
-        type, 
-        previousBarangayId: null, 
-        rawAddress: addr.trim(),
-        submittedAt: new Date().toISOString(), 
-        submittedVia: 'Walk-in', 
-        batchId: null, 
-        supportingDoc: null, 
-        yearsAtAddress: undefined, 
-        synthetic: false,
-        photo_base64: biometricData?.photo_base64 || selectedVoter?.photo_base64 || null,
-        biometrics: biometricData ? {
-          enrolled: true,
-          voter_id: biometricData.voter_id,
-          vin: biometricData.vin,
-          hash: biometricData.biometric_hash,
-          status: biometricData.status
-        } : (selectedVoter ? {
-          enrolled: true,
-          voter_id: selectedVoter.voter_id,
-          vin: selectedVoter.vin,
-          hash: `VERIFIED-1:1:${selectedVoter.voter_id}`,
-          status: 'VERIFIED'
-        } : null),
-        document: file ? { 
-          filename: file.name, 
-          scanQuality: 0.8, 
-          pages: 1, 
-          embedding: simulatedEmbeddingFromFile(file.name, file.size), 
-          simulatedFromFile: true 
-        } : null,
-      },
+      app: appRecord,
     })
+
+    // Automatically open a case in the Investigation Queue
+    dispatch({
+      type: 'caseUpdate',
+      id,
+      patch: { 
+        status: hasAnomaly ? 'Under Review' : 'New',
+        suspectedFlag: hasAnomaly ? biometricData.timing_anomaly.flag : null,
+        timing_anomaly: appRecord.timing_anomaly,
+        duration: appRecord.duration_formatted,
+        photo_base64: appRecord.photo_base64
+      },
+      text: hasAnomaly 
+        ? `🚨 Suspected ${biometricData.timing_anomaly.flag} logged during biometric intake.`
+        : `Biometric registration application queued for review.`,
+      action: hasAnomaly ? 'ANOMALY_TRIGGERED' : 'CASE_OPENED'
+    })
+
     notify(`${id} biometric profile indexed and forwarded to ERB case queue.`)
     setName('')
     setFile(null)
@@ -138,23 +250,70 @@ export default function IdentificationAnalysis() {
       alert('Please enter citizen name.')
       return
     }
+    if (!enrollPhoto) {
+      alert('Please snap a live photo with the camera before enrolling.')
+      return
+    }
     setEnrolling(true)
     try {
-      const photoToUse = enrollPhoto || generateAvatarCanvas(enrollName)
-      await registerComelecVoter({
+      const resp = await registerComelecVoter({
         name: enrollName.trim(),
         precinct_id: enrollPrecinct,
         barangay: enrollPrecinct,
         birthdate: '2001-05-15',
-        photo_base64: photoToUse
+        photo_base64: enrollPhoto
       })
       await fetchVoters()
+
+      // Synchronize into application store & open investigation case
+      const vId = resp?.voter_id || `VOTER-MOCK-${Date.now().toString(36).toUpperCase()}`
+      const newCitizenApp = {
+        id: vId,
+        vin: resp?.vin || `VIN-${Date.now()}`,
+        name: enrollName.trim(),
+        age: 24,
+        type: 'COMELEC Enrolled Citizen',
+        previousBarangayId: null,
+        rawAddress: `Taft Ave, Malate (DLSU Ward), Manila`,
+        submittedAt: new Date().toISOString(),
+        submittedVia: 'COMELEC Biometric Enrollment',
+        batchId: null,
+        supportingDoc: { type: 'COMELEC Mock Voter ID', barangayId: 'MAL' },
+        yearsAtAddress: 4,
+        synthetic: false,
+        photo_base64: enrollPhoto,
+        biometrics: {
+          enrolled: true,
+          voter_id: vId,
+          vin: resp?.vin,
+          hash: resp?.biometric_hash || 'SHA256:LOCAL_RAM',
+          status: resp?.registration_status || 'ACTIVE_VERIFIED'
+        },
+        document: null,
+        isComelecEnrolled: true,
+        label: 'Moderate',
+        score: 45
+      }
+      dispatch({ type: 'addApp', app: newCitizenApp })
+      dispatch({
+        type: 'caseUpdate',
+        id: vId,
+        patch: { status: 'New', photo_base64: enrollPhoto },
+        text: `Citizen ${enrollName} enrolled with official COMELEC ID (${vId}). Case registered in queue.`,
+        action: 'CASE_OPENED'
+      })
+
       setShowEnrollModal(false)
       setEnrollName('')
       setEnrollPhoto(null)
-      notify(`Citizen ${enrollName} successfully enrolled with official Mock Voter ID.`)
+      stopEnrollCamera()
+      notify(`Citizen ${enrollName} successfully enrolled (${vId}) and queued in Investigation Cases!`)
     } catch (err) {
-      alert('Enrollment failed: ' + err.message)
+      if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        alert('Enrollment failed: Cannot reach the Biometric Engine on http://127.0.0.1:8000. Please ensure the backend is running (double-click start_backend.bat or start_all.bat).')
+      } else {
+        alert('Enrollment failed: ' + err.message)
+      }
     } finally {
       setEnrolling(false)
     }
@@ -205,7 +364,7 @@ export default function IdentificationAnalysis() {
         value={tab} 
         onChange={setTab} 
         tabs={[
-          { id: 'facial', label: 'Facial Recognition & Biometric Intake', icon: ScanFace },
+          { id: 'facial', label: 'Dual-Face Attendance (IN & OUT) & Biometrics', icon: ScanFace },
           { id: 'handwriting', label: 'Handwriting Similarity (Batch Forgery Detector)', icon: PenTool },
           { id: 'registry', label: `COMELEC Mock Registry (${comelecVoters.length})`, icon: IdCard }
         ]} 
@@ -309,7 +468,7 @@ export default function IdentificationAnalysis() {
                 selectedVoter={selectedVoter}
                 registryCount={comelecVoters.length}
                 onGoToRegistry={() => setTab('registry')}
-                onBiometricChange={setBiometricData}
+                onBiometricChange={handleBiometricChange}
                 disabled={!perm.canEdit}
               />
 
@@ -579,26 +738,52 @@ export default function IdentificationAnalysis() {
               </div>
 
               <div className="field">
-                <label>Photo Source (Webcam or File)</label>
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={(e) => {
-                    const f = e.target.files[0]
-                    if (f) {
-                      const r = new FileReader()
-                      r.onload = ev => setEnrollPhoto(ev.target.result)
-                      r.readAsDataURL(f)
-                    }
-                  }} 
-                />
+                <label>Official Biometric Photo (Live Camera Only)</label>
+                
+                {enrollPhoto ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'var(--panel2)', padding: 12, borderRadius: 12, border: '1px solid var(--border)' }}>
+                    <div style={{ width: 84, height: 84, borderRadius: 10, overflow: 'hidden', border: '2px solid #22c55e', background: '#000', flexShrink: 0 }}>
+                      <img src={enrollPhoto} alt="Captured Citizen" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <CheckCircle2 size={14} /> Live Portrait Captured
+                      </div>
+                      <div className="small muted" style={{ margin: '4px 0 8px 0' }}>Ready for 512-D vector indexing in local RAM.</div>
+                      <button 
+                        type="button" 
+                        className="chip small" 
+                        onClick={() => { setEnrollPhoto(null); startEnrollCamera(); }}
+                      >
+                        🔄 Retake Live Photo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background: 'var(--panel2)', border: '1px solid var(--border)', borderRadius: 14, padding: 12, textAlign: 'center' }}>
+                    <div style={{ position: 'relative', width: 170, height: 170, margin: '0 auto 10px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #38bdf8', background: '#000' }}>
+                      <video
+                        ref={enrollVideoRef}
+                        playsInline
+                        autoPlay
+                        muted
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn primary small"
+                        onClick={snapEnrollPhoto}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      >
+                        <Camera size={14} />
+                        <span>📸 Snap Live Citizen Photo</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {enrollPhoto && (
-                <div style={{ width: 80, height: 80, borderRadius: 10, overflow: 'hidden', margin: '4px 0', border: '1px solid var(--border)' }}>
-                  <img src={enrollPhoto} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-              )}
 
               <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <button type="button" className="btn" onClick={() => setShowEnrollModal(false)}>Cancel</button>
