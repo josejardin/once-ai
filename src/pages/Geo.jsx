@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useApp } from '../store.jsx'
 import MapView from '../components/MapView.jsx'
 import { Badge, Card, PageHead, SyntheticBanner, EmptyState } from '../components/ui.jsx'
-import { X, SearchCheck, Share2, Copy, CheckCircle2, ExternalLink, Globe, MapPin, ArrowRight } from 'lucide-react'
+import { X, SearchCheck, Share2, Copy, CheckCircle2, ExternalLink, Globe, MapPin, ArrowRight, AlertTriangle, AlertOctagon, Clock } from 'lucide-react'
 import { LGU } from '../lib/gazetteer.js'
+import { getComelecVoters, getAllAttendance } from '../lib/api.js'
 
 const CL_REVIEW = ['Unreviewed', 'Under field verification', 'Explained by context', 'Escalated to ERB']
 
@@ -14,6 +15,96 @@ export default function Geo() {
   const [showShareModal, setShowShareModal] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
   const [copiedEmbed, setCopiedEmbed] = useState(false)
+
+  // Live Enrolled Citizens & Attendance Events
+  const [comelecVoters, setComelecVoters] = useState([])
+  const [attendanceRecords, setAttendanceRecords] = useState([])
+
+  useEffect(() => {
+    async function loadLiveData() {
+      try {
+        const [vData, aData] = await Promise.allSettled([
+          getComelecVoters(),
+          getAllAttendance()
+        ])
+        if (vData.status === 'fulfilled' && vData.value?.voters) {
+          setComelecVoters(vData.value.voters)
+        }
+        if (aData.status === 'fulfilled' && aData.value?.attendance) {
+          setAttendanceRecords(aData.value.attendance)
+        }
+      } catch (e) {
+        console.warn('Geo live data fetch notice:', e)
+      }
+    }
+    loadLiveData()
+    const timer = setInterval(loadLiveData, 3000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // Unified Geo Apps: Dataset Apps + Live Enrolled Citizens (with spatial placement near DLSU Taft)
+  const allGeoApps = useMemo(() => {
+    const existingIds = new Set(result.apps.map((a) => a.id))
+    const attMap = {}
+    attendanceRecords.forEach((att) => { attMap[att.voter_id] = att })
+
+    const enrolledGeo = comelecVoters.map((v, i) => {
+      const att = attMap[v.voter_id] || v.attendance
+      const cs = state.caseState[v.voter_id]
+      const anomaly = att?.timing_anomaly || cs?.timing_anomaly || (att?.anomaly_flag && att.anomaly_flag !== 'NORMAL' ? { flag: att.anomaly_flag, reason: 'Duration outlier' } : null)
+      const hasIssue = !!(anomaly?.flag && anomaly.flag !== 'NORMAL') || cs?.suspectedFlag || v.registration_status?.includes('BLOCKED')
+
+      // Position along DLSU Taft Avenue sector
+      const coords = [
+        14.5648 + ((i % 4) - 1.5) * 0.0015,
+        120.9932 + (Math.floor(i / 4) - 0.5) * 0.0015
+      ]
+
+      return {
+        id: v.voter_id,
+        vin: v.vin,
+        name: v.name,
+        age: 25,
+        type: 'COMELEC Enrolled Citizen',
+        submittedAt: att?.face_in_timestamp || v.created_at || new Date().toISOString(),
+        rawAddress: 'Taft Ave, Malate (DLSU Ward), Manila',
+        addr: {
+          original: 'Taft Ave, Malate, Manila',
+          normalized: 'Taft Ave, Malate (DLSU Sector), Manila',
+          status: 'Resolved',
+          precision: 'street',
+          precisionBasis: 'Taft Ave, Malate (DLSU Core)',
+          confidence: 1.0,
+          warnings: [],
+          components: { barangay: 'Maligaya' },
+          coords
+        },
+        issue: cs?.suspectedFlag || anomaly?.flag || (hasIssue ? 'ANOMALY_DETECTED' : null),
+        timing_anomaly: anomaly,
+        duration_formatted: att?.duration_formatted || att?.duration || cs?.duration,
+        label: hasIssue ? 'High' : 'Moderate',
+        score: hasIssue ? 95 : 30,
+        photo_base64: v.photo_base64,
+        isComelecEnrolled: true
+      }
+    })
+
+    const merged = [...result.apps]
+    enrolledGeo.forEach((eg) => {
+      const idx = merged.findIndex((m) => m.id === eg.id)
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...eg }
+      } else {
+        merged.unshift(eg)
+      }
+    })
+    return merged
+  }, [result.apps, comelecVoters, attendanceRecords, state.caseState])
+
+  // Active Anomaly Incidents List
+  const activeIncidents = useMemo(() => {
+    return allGeoApps.filter((a) => a.issue || (a.timing_anomaly?.flag && a.timing_anomaly.flag !== 'NORMAL') || state.caseState[a.id]?.suspectedFlag)
+  }, [allGeoApps, state.caseState])
 
   // Sync selected cluster from URL hash query (e.g., #/geo?cluster=CL-0089)
   useEffect(() => {
@@ -96,7 +187,7 @@ export default function Geo() {
           </div>
 
           <div className="mapwrap">
-            <MapView apps={result.apps} clusters={result.clusters} layers={layers} selectedCluster={selId} onSelectCluster={setSelId} onSelectApp={openApp} />
+            <MapView apps={allGeoApps} clusters={result.clusters} layers={layers} selectedCluster={selId} onSelectCluster={setSelId} onSelectApp={openApp} />
             {sel && (
             <aside className="cluster-panel" aria-label="Cluster details">
               <div className="cp-head">
@@ -148,7 +239,47 @@ export default function Geo() {
           <div className="row small"><span style={{ color: '#1b9a68' }}>● Low</span><span style={{ color: '#d9820f' }}>● Moderate</span><span style={{ color: '#c0272d' }}>● High</span><span style={{ color: '#374151' }}>● Known building</span><span style={{ color: '#c0272d' }}>◯ Cluster needs review</span><span style={{ color: '#6b7280' }}>◯ Cluster plausibly explained by context</span></div>
         </div>
 
-        <div className="grid" style={{ alignContent: 'start' }}>
+        <div className="grid" style={{ alignContent: 'start', gap: 14 }}>
+          {/* Active Voter Anomalies & Suspected Incidents (Live Radar Pinning) */}
+          {activeIncidents.length > 0 && (
+            <Card title="Active Voter Anomaly Incidents" sub={`${activeIncidents.length} flagged`}>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {activeIncidents.map((a) => (
+                  <div 
+                    key={a.id} 
+                    className="ind trig"
+                    style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 8, padding: 10, cursor: 'pointer' }}
+                    onClick={() => openApp(a.id)}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span className="mono" style={{ fontWeight: 800 }}>{a.id}</span>
+                        <span style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</span>
+                      </div>
+                      <Badge tone="high">{a.issue || a.timing_anomaly?.flag || 'ANOMALY'}</Badge>
+                    </div>
+
+                    <div className="small" style={{ color: '#991b1b', marginTop: 4 }}>
+                      ⚠️ {a.timing_anomaly?.reason || `Flagged with ${a.issue} anomaly`}{a.duration_formatted ? ` (${a.duration_formatted})` : ''}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                      <span className="small muted">Location: {a.addr?.normalized || 'DLSU Taft Sector'}</span>
+                      <a 
+                        href={`#/cases?app=${a.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="chip sm mono"
+                        style={{ background: '#b91c1c', color: '#fff', fontSize: 11, padding: '2px 8px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
+                        <SearchCheck size={12} /> Case Queue ➔
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
           <Card title="Detected Manila clusters" sub={`${result.clusters.length}`}>
             {result.clusters.map((c) => {
               const rev = state.clusterReview[c.id] || 'Unreviewed'

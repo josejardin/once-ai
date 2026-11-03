@@ -97,12 +97,15 @@ export function cropFaceCanvas(sourceElement, bbox, outputSize = 256) {
     const cx = (bbox.cx !== undefined ? bbox.cx : bbox.x + bbox.width / 2) * sw;
     const cy = (bbox.cy !== undefined ? bbox.cy : bbox.y + bbox.height / 2) * sh;
     
-    // 1.35x padding around the face height for standard facial recognition framing
-    const faceH = (bbox.faceHeight || bbox.height || 0.4) * sh;
-    const size = Math.max(faceH * 1.35, 120);
+    // Full passport / ID portrait framing: 2.2x face height so full head, hair, chin, and neck are captured (never cropped to just eyes)
+    const faceH = (bbox.faceHeight || bbox.height || 0.45) * sh;
+    const size = Math.max(faceH * 2.2, Math.min(sw, sh) * 0.85);
+
+    // Center slightly lower for natural head room
+    const adjustedCy = cy + faceH * 0.08;
 
     let sx = cx - size / 2;
-    let sy = cy - size / 2;
+    let sy = adjustedCy - size / 2;
 
     if (sx < 0) sx = 0;
     if (sy < 0) sy = 0;

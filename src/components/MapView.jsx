@@ -64,8 +64,40 @@ export default function MapView({ apps, clusters, layers, selectedCluster, onSel
       apps.forEach((a) => {
         if (!a.addr.coords || !['building', 'sitio', 'landmark', 'street', 'purok'].includes(a.addr.precision)) return
         const m = L.circleMarker(a.addr.coords, { radius: a.label === 'High' ? 6 : 4.5, color: '#ffffff', weight: 1, fillColor: a.synthetic ? LABEL_COLOR[a.label].replace(/var\(--(\w+)\)/, (_, k) => ({ low: '#1b9a68', mod: '#d9820f', high: '#c0272d' }[k])) : '#fff', fillOpacity: 0.95 })
-        m.bindTooltip(`${a.id} - ${a.addr.components.barangay || '?'}<br/>${a.label} priority, score ${a.score}<br/><i>${a.addr.precisionBasis}</i>`)
+        m.bindTooltip(`${a.id} - ${a.name || 'Applicant'}<br/>${a.addr.components?.barangay || '?'}<br/>${a.label} priority, score ${a.score}<br/><i>${a.addr.precisionBasis}</i>`)
         m.on('click', () => onSelectApp && onSelectApp(a.id))
+        m.addTo(g)
+      })
+
+      // ACTIVE VOTER ANOMALIES & SUSPECTED INCIDENTS (Pulsing Radar Marker)
+      apps.forEach((a) => {
+        const hasIssue = !!(a.issue || (a.timing_anomaly?.flag && a.timing_anomaly.flag !== 'NORMAL') || (a.label === 'High' && !a.synthetic))
+        if (!hasIssue || !a.addr?.coords) return
+
+        const flagName = a.issue || a.timing_anomaly?.flag || 'SUSPECTED ANOMALY'
+        const durationText = a.duration_formatted ? ` (${a.duration_formatted})` : ''
+
+        // Pulsing red alert radar circle
+        L.marker(a.addr.coords, {
+          interactive: false,
+          keyboard: false,
+          icon: L.divIcon({
+            className: 'pulse-wrap',
+            html: '<span class="pulse" style="border-color:#ef4444;background:rgba(239,68,68,0.35);animation-duration:1.2s"></span>',
+            iconSize: [0, 0]
+          })
+        }).addTo(g)
+
+        // Prominent Alert Badge Marker
+        const iconHtml = `<div style="background:#dc2626;color:#ffffff;font:bold 11px system-ui;padding:3px 8px;border-radius:12px;border:2px solid #ffffff;box-shadow:0 3px 10px rgba(220,38,38,0.6);display:inline-flex;align-items:center;gap:4px;white-space:nowrap;transform:translate(-50%,-50%);cursor:pointer">⚠️ ${flagName}${durationText}</div>`
+        const m = L.marker(a.addr.coords, {
+          icon: L.divIcon({ className: '', html: iconHtml })
+        })
+
+        m.bindTooltip(`<b>🚨 ACTIVE ANOMALY INCIDENT: ${flagName}</b><br/>Citizen: ${a.name} (${a.id})<br/>Location: ${a.addr.normalized || 'DLSU Taft Sector'}<br/>${a.timing_anomaly?.reason || 'Suspected biometric or duration anomaly'}<br/><i>Click to open case dossier</i>`)
+        m.on('click', () => {
+          if (onSelectApp) onSelectApp(a.id)
+        })
         m.addTo(g)
       })
     }

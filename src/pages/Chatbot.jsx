@@ -402,11 +402,11 @@ export default function Chatbot() {
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 10 }}>
                           {/* 1. Official COMELEC ID Photo */}
                           <div style={{ textAlign: 'center' }}>
-                            <div style={{ width: '100%', height: 110, borderRadius: 10, overflow: 'hidden', border: '2px solid var(--border)', background: '#000', marginBottom: 4 }}>
+                            <div style={{ width: '100%', height: 145, borderRadius: 10, overflow: 'hidden', border: '2px solid var(--border)', background: '#090d16', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <img 
                                 src={m.voterDossier.photo_id_base64 || generatePlaceholderAvatar(m.voterDossier.name)} 
                                 alt="Official ID Photo" 
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                               />
                             </div>
                             <span className="chip small" style={{ fontSize: 10, fontWeight: 700 }}>
@@ -416,11 +416,11 @@ export default function Chatbot() {
 
                           {/* 2. Live Face IN (Check-In) */}
                           <div style={{ textAlign: 'center' }}>
-                            <div style={{ width: '100%', height: 110, borderRadius: 10, overflow: 'hidden', border: '2px solid #22c55e', background: '#000', marginBottom: 4 }}>
+                            <div style={{ width: '100%', height: 145, borderRadius: 10, overflow: 'hidden', border: '2px solid #22c55e', background: '#090d16', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <img 
                                 src={m.voterDossier.photo_in_base64 || m.voterDossier.photo_id_base64} 
                                 alt="Live Face IN" 
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                               />
                             </div>
                             <span className="chip small" style={{ fontSize: 10, fontWeight: 700, color: '#22c55e' }}>
@@ -430,11 +430,11 @@ export default function Chatbot() {
 
                           {/* 3. Live Face OUT (Check-Out) */}
                           <div style={{ textAlign: 'center' }}>
-                            <div style={{ width: '100%', height: 110, borderRadius: 10, overflow: 'hidden', border: '2px solid #38bdf8', background: '#000', marginBottom: 4 }}>
+                            <div style={{ width: '100%', height: 145, borderRadius: 10, overflow: 'hidden', border: '2px solid #38bdf8', background: '#090d16', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <img 
                                 src={m.voterDossier.photo_out_base64 || m.voterDossier.photo_id_base64} 
                                 alt="Live Face OUT" 
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                               />
                             </div>
                             <span className="chip small" style={{ fontSize: 10, fontWeight: 700, color: '#38bdf8' }}>
