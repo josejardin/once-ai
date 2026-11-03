@@ -13,10 +13,12 @@ import {
 } from 'lucide-react'
 
 const PRECINCTS = [
-  'Precinct 101 - Manila',
+  'Precinct 101 - Manila (Malate DLSU Ward)',
+  'Precinct 102 - Manila (Ermita Ward)',
   'Precinct 202 - Quezon City',
   'Precinct 303 - Makati',
-  'Precinct 404 - Pasig'
+  'Precinct 404 - Pasig',
+  'Precinct 505 - Sampaguita Ward'
 ]
 
 export default function IdentificationAnalysis() {
@@ -55,9 +57,12 @@ export default function IdentificationAnalysis() {
 
   // --- COMELEC MOCK REGISTRY STATE ---
   const [registryLoading, setRegistryLoading] = useState(false)
+  const [transferPrecinct, setTransferPrecinct] = useState('Precinct 202 - Quezon City')
   const [showEnrollModal, setShowEnrollModal] = useState(false)
   const [enrollName, setEnrollName] = useState('')
   const [enrollPrecinct, setEnrollPrecinct] = useState(PRECINCTS[0])
+  const [enrollDeclaredAddress, setEnrollDeclaredAddress] = useState('2401 Taft Ave, Malate (DLSU Ward), Manila')
+  const [enrollAge, setEnrollAge] = useState(24)
   const [enrollPhoto, setEnrollPhoto] = useState(null)
   const [enrolling, setEnrolling] = useState(false)
   const [registrySearch, setRegistrySearch] = useState('')
@@ -121,7 +126,16 @@ export default function IdentificationAnalysis() {
   const fetchVoters = async () => {
     try {
       const data = await getComelecVoters()
-      if (data?.voters) setComelecVoters(data.voters)
+      if (data?.voters) {
+        setComelecVoters(data.voters)
+        if (!selectedVoter && data.voters.length > 0) {
+          const v = data.voters[0]
+          setSelectedVoter(v)
+          setName(v.name)
+          setAge(v.age || 24)
+          setAddr(v.declared_address || v.rawAddress || v.barangay || `Purok 1, ${v.precinct_id}`)
+        }
+      }
     } catch (err) {
       console.warn('Error fetching COMELEC voters:', err)
     }
@@ -163,6 +177,13 @@ export default function IdentificationAnalysis() {
       notify(`🚨 Suspected Flag [${flagName}] logged for ${vId}! Viewable in Investigation Cases.`)
     }
   }
+
+  const isFaceOutCompleted = Boolean(
+    biometricData?.stage === 'FACE_OUT' || 
+    biometricData?.face_out_time || 
+    biometricData?.duration ||
+    (selectedVoter && (selectedVoter.has_voted || selectedVoter.attendance?.face_out))
+  )
 
   const submitApplication = () => {
     if (!name.trim() || !addr.trim()) { 
@@ -257,10 +278,14 @@ export default function IdentificationAnalysis() {
     }
     setEnrolling(true)
     try {
+      const citizenAge = Number(enrollAge) || 24
+      const decAddr = enrollDeclaredAddress.trim() || '2401 Taft Ave, Malate (DLSU Ward), Manila'
       const resp = await registerComelecVoter({
         name: enrollName.trim(),
         precinct_id: enrollPrecinct,
         barangay: enrollPrecinct,
+        declared_address: decAddr,
+        age: citizenAge,
         birthdate: '2001-05-15',
         photo_base64: enrollPhoto
       })
@@ -272,10 +297,11 @@ export default function IdentificationAnalysis() {
         id: vId,
         vin: resp?.vin || `VIN-${Date.now()}`,
         name: enrollName.trim(),
-        age: 24,
+        age: citizenAge,
         type: 'COMELEC Enrolled Citizen',
         previousBarangayId: null,
-        rawAddress: `Taft Ave, Malate (DLSU Ward), Manila`,
+        rawAddress: decAddr,
+        declared_address: decAddr,
         submittedAt: new Date().toISOString(),
         submittedVia: 'COMELEC Biometric Enrollment',
         batchId: null,
@@ -295,6 +321,17 @@ export default function IdentificationAnalysis() {
         label: 'Moderate',
         score: 45
       }
+
+      // Automatically auto-fill into Biometrics form so no re-typing is needed
+      setSelectedVoter({
+        ...newCitizenApp,
+        voter_id: vId,
+        declared_address: decAddr,
+        precinct_id: enrollPrecinct
+      })
+      setName(enrollName.trim())
+      setAge(citizenAge)
+      setAddr(decAddr)
       dispatch({ type: 'addApp', app: newCitizenApp })
       dispatch({
         type: 'caseUpdate',
@@ -410,9 +447,8 @@ export default function IdentificationAnalysis() {
                             } else {
                               setSelectedVoter(v)
                               setName(v.name)
-                              if (v.precinct_id) {
-                                setAddr(`Purok 1, ${v.precinct_id}`)
-                              }
+                              setAge(v.age || 24)
+                              setAddr(v.declared_address || v.rawAddress || v.barangay || `Purok 1, ${v.precinct_id}`)
                             }
                           }}
                         >
@@ -421,6 +457,25 @@ export default function IdentificationAnalysis() {
                       )
                     })}
                   </div>
+                </div>
+              )}
+
+              {selectedVoter && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  background: 'rgba(34, 197, 94, 0.08)',
+                  border: '1.5px solid rgba(34, 197, 94, 0.3)',
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  fontSize: 12
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#15803d', fontWeight: 600 }}>
+                    <CheckCircle2 size={15} />
+                    <span>✓ Autofilled from COMELEC Mock Registry: <b>{selectedVoter.name}</b> (No re-typing needed)</span>
+                  </div>
+                  <Badge tone="low">{selectedVoter.precinct_id || 'Registered'}</Badge>
                 </div>
               )}
 
@@ -451,6 +506,29 @@ export default function IdentificationAnalysis() {
                     </select>
                   </div>
                 </div>
+                {type === 'Transfer of registration' && (
+                  <div className="field" style={{ gridColumn: '1 / -1', background: 'var(--panel2)', padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--border)' }}>
+                    <label htmlFor="tp" style={{ fontWeight: 700, color: 'var(--blue)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>🏛️ Available Target Precinct (Transfer Destination)</span>
+                    </label>
+                    <select 
+                      id="tp" 
+                      value={transferPrecinct} 
+                      onChange={(e) => {
+                        setTransferPrecinct(e.target.value)
+                        setAddr(`Purok 1, ${e.target.value}`)
+                      }}
+                      style={{ marginTop: 4, fontWeight: 600 }}
+                    >
+                      {PRECINCTS.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                    <div className="small muted" style={{ marginTop: 4 }}>
+                      Current Registered: <b>{selectedVoter?.precinct_id || 'Precinct 101 - Manila'}</b> ➔ Transferring to: <b>{transferPrecinct}</b>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="field">
@@ -477,15 +555,42 @@ export default function IdentificationAnalysis() {
 
               <div>
                 <button 
-                  className="btn primary" 
-                  disabled={!perm.canEdit} 
+                  className={`btn ${isFaceOutCompleted ? 'primary' : ''}`} 
+                  disabled={!perm.canEdit || !isFaceOutCompleted} 
                   onClick={submitApplication} 
-                  title={perm.canEdit ? '' : 'Requires ERB Reviewer role'}
-                  style={{ width: '100%', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                  title={
+                    !perm.canEdit 
+                      ? 'Requires ERB Reviewer role' 
+                      : !isFaceOutCompleted 
+                        ? 'Submit disabled: Please complete Step 2 (Face OUT) biometric verification first.' 
+                        : ''
+                  }
+                  style={{ 
+                    width: '100%', 
+                    padding: '12px 16px', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    gap: 8,
+                    cursor: !isFaceOutCompleted ? 'not-allowed' : 'pointer',
+                    background: !isFaceOutCompleted ? '#94a3b8' : undefined,
+                    color: !isFaceOutCompleted ? '#f8fafc' : undefined,
+                    opacity: !isFaceOutCompleted ? 0.6 : 1,
+                    fontWeight: 700
+                  }}
                 >
                   <CheckCircle2 size={16} />
-                  <span>Submit Biometric Application & Screen</span>
+                  <span>
+                    {isFaceOutCompleted 
+                      ? '✓ Submit Biometric Application & Screen' 
+                      : '🔒 Submit Biometric (Grayed: Awaiting 2nd Face Verification)'}
+                  </span>
                 </button>
+                {!isFaceOutCompleted && (
+                  <div className="small muted" style={{ textAlign: 'center', marginTop: 6, color: 'var(--mod)' }}>
+                    ⚠️ Note: Both <b>Face IN</b> (Intake) and <b>Face OUT</b> (Ballot feed) must be completed before submission.
+                  </div>
+                )}
               </div>
             </div>
           </Card>
@@ -741,6 +846,32 @@ export default function IdentificationAnalysis() {
                 <select value={enrollPrecinct} onChange={(e) => setEnrollPrecinct(e.target.value)}>
                   {PRECINCTS.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
+              </div>
+
+              <div className="field">
+                <label>Citizen Age</label>
+                <input 
+                  type="number" 
+                  min="18" 
+                  max="120" 
+                  value={enrollAge} 
+                  onChange={(e) => setEnrollAge(e.target.value)} 
+                  required 
+                />
+              </div>
+
+              <div className="field">
+                <label style={{ fontWeight: 700, color: 'var(--blue)' }}>Declared Address (Residence / Street)</label>
+                <input 
+                  type="text" 
+                  value={enrollDeclaredAddress} 
+                  onChange={(e) => setEnrollDeclaredAddress(e.target.value)} 
+                  placeholder="e.g. 2401 Taft Ave / Fidel Reyes St, Malate, Manila" 
+                  required 
+                />
+                <div className="small muted" style={{ marginTop: 2 }}>
+                  ✓ This declared address auto-fills automatically in Biometric Intake without re-typing.
+                </div>
               </div>
 
               <div className="field">

@@ -162,6 +162,8 @@ class RegisterVoterRequest(BaseModel):
     barangay: Optional[str] = "Barangay Malate, Manila"
     birthdate: Optional[str] = "2001-05-15"
     photo_base64: str
+    declared_address: Optional[str] = None
+    age: Optional[int] = 24
 
 class FaceInCheckinRequest(BaseModel):
     voter_id: str
@@ -224,6 +226,8 @@ def get_comelec_voters():
             "birthdate": data["birthdate"],
             "precinct_id": data["precinct_id"],
             "barangay": data["barangay"],
+            "declared_address": data.get("declared_address", f"Purok 1, {data.get('barangay')}"),
+            "age": data.get("age", 24),
             "civil_status": data.get("civil_status", "Single"),
             "citizenship": data.get("citizenship", "Filipino"),
             "photo_base64": data["photo_base64"],
@@ -292,6 +296,8 @@ def register_new_citizen(payload: RegisterVoterRequest):
         "civil_status": "Single",
         "citizenship": "Filipino",
         "photo_base64": payload.photo_base64,
+        "declared_address": payload.declared_address or f"Purok 1, {payload.barangay or payload.precinct_id}",
+        "age": payload.age or 24,
         "registration_status": "REGISTERED / ELIGIBLE",
         "biometric_hash": f"SHA256:{uuid.uuid4().hex[:12]}...",
         "reference_vector": salted_vec,
@@ -347,8 +353,9 @@ def verify_face_in(payload: FaceInCheckinRequest):
 
     target_voter = COMELEC_VOTER_REGISTRY.get(payload.voter_id)
 
-    # 2. Check if Ballot Already Cast and Session Locked
-    if target_voter and target_voter.get("has_voted"):
+    # 2. Check if Ballot Already Cast and Session Locked (Strict Single-Vote Enforced)
+    existing_att = VOTING_ATTENDANCE.get(payload.voter_id, {})
+    if (target_voter and target_voter.get("has_voted")) or existing_att.get("face_out_epoch"):
         att = VOTING_ATTENDANCE.get(payload.voter_id, {})
         audit_entry = {
             "id": str(uuid.uuid4())[:8],

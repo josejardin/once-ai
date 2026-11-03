@@ -28,6 +28,15 @@ export default function BiometricIntakeCapture({
   // Session state across IN & OUT
   const [attendanceSession, setAttendanceSession] = useState(null);
 
+  const hasAlreadyVoted = Boolean(
+    selectedVoter?.has_voted || 
+    selectedVoter?.attendance?.face_out || 
+    (selectedVoter?.attendance?.status && selectedVoter.attendance.status.includes('COMPLETED')) ||
+    (selectedVoter?.registration_status && selectedVoter.registration_status.includes('VOTED')) ||
+    (bioResult?.status === 'ALREADY_VOTED_LOCKED') || 
+    (bioResult?.status === 'ALREADY_CHECKED_OUT')
+  );
+
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const landmarkerRef = useRef(null);
@@ -86,6 +95,10 @@ export default function BiometricIntakeCapture({
 
   async function startCamera() {
     setErrorMsg(null);
+    if (hasAlreadyVoted) {
+      setErrorMsg('VOTER ALREADY VOTED: Biometrics can only be completed once per election. Duplicate voting is blocked.');
+      return;
+    }
     const available = await checkRegistryAvailable();
     if (!available) return;
 
@@ -185,6 +198,10 @@ export default function BiometricIntakeCapture({
 
   // Core Face Verification Pipeline (Handles Face IN & Face OUT)
   async function processBiometricSubmission(photoBase64, simulatedDuration = null) {
+    if (hasAlreadyVoted) {
+      setErrorMsg('CITIZEN ALREADY VOTED: Biometrics can only be completed once per election. Terminal is permanently locked.');
+      return;
+    }
     setPhoto(photoBase64);
     setAnalyzing(true);
     setErrorMsg(null);
@@ -319,8 +336,32 @@ export default function BiometricIntakeCapture({
         )}
       </div>
 
-      {/* WEBCAM CAPTURING STATE */}
-      {isCapturing ? (
+      {/* CITIZEN ALREADY VOTED LOCKOUT (STRICT 1 VOTE PER ELECTION LIMIT) */}
+      {hasAlreadyVoted ? (
+        <div style={{
+          background: '#fef2f2',
+          border: '2px solid #ef4444',
+          borderRadius: 14,
+          padding: '16px 20px',
+          textAlign: 'left'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#991b1b' }}>
+            <AlertOctagon size={24} color="#dc2626" />
+            <div>
+              <b style={{ fontSize: 15 }}>CITIZEN ALREADY VOTED — ONE VOTE LIMIT ENFORCED</b>
+              <div style={{ fontSize: 13, color: '#7f1d1d', marginTop: 4, lineHeight: 1.5 }}>
+                Citizen <b>{selectedVoter?.name || applicantName}</b> has already completed dual-face biometric attendance and cast their official ballot in this election.
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', background: 'rgba(239, 68, 68, 0.08)', padding: '8px 12px', borderRadius: 8 }}>
+            <Badge tone="high">🔒 Biometric Terminal Locked</Badge>
+            <span className="small muted">
+              Under Section 261 of the Philippine Omnibus Election Code, duplicate voting is strictly prohibited. Biometrics can only be completed once per voter.
+            </span>
+          </div>
+        </div>
+      ) : isCapturing ? (
         <div style={{ background: 'var(--panel2)', border: '1.5px solid var(--border)', borderRadius: 16, padding: 16, textAlign: 'center' }}>
           <div style={{ position: 'relative', width: 200, height: 200, margin: '0 auto 12px', borderRadius: '50%', overflow: 'hidden', border: faceLocked ? '3px solid var(--low)' : '3px dashed var(--mod)', background: '#000' }}>
             <video

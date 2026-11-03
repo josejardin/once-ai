@@ -29,6 +29,7 @@ export default function ComelecRegistry() {
   const [enrollName, setEnrollName] = useState('');
   const [enrollPrecinct, setEnrollPrecinct] = useState(PRECINCTS[0]);
   const [enrollBarangay, setEnrollBarangay] = useState('Barangay Malate, Manila');
+  const [enrollDeclaredAddress, setEnrollDeclaredAddress] = useState('2401 Taft Ave, Malate (DLSU Sector), Manila');
   const [enrollBirthdate, setEnrollBirthdate] = useState('2001-05-15');
   const [enrollPhoto, setEnrollPhoto] = useState(null);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -165,6 +166,13 @@ export default function ComelecRegistry() {
     reader.readAsDataURL(file);
   }
 
+  const calculateAge = (bdate) => {
+    if (!bdate) return 24;
+    const diff = Date.now() - new Date(bdate).getTime();
+    const ageDate = new Date(diff);
+    return Math.abs(ageDate.getUTCFullYear() - 1970) || 24;
+  };
+
   async function handleEnrollSubmit(e) {
     e.preventDefault();
     if (!enrollName.trim() || !enrollPhoto) {
@@ -174,13 +182,50 @@ export default function ComelecRegistry() {
 
     setEnrolling(true);
     try {
+      const calcAge = calculateAge(enrollBirthdate);
+      const decAddr = enrollDeclaredAddress.trim() || '2401 Taft Ave, Malate (DLSU Sector), Manila';
       const res = await registerComelecVoter({
         name: enrollName.trim(),
         precinct_id: enrollPrecinct,
         barangay: enrollBarangay,
+        declared_address: decAddr,
+        age: calcAge,
         birthdate: enrollBirthdate,
         photo_base64: enrollPhoto
       });
+
+      if (dispatch) {
+        dispatch({
+          type: 'addApp',
+          app: {
+            id: res.voter_id,
+            vin: res.vin,
+            name: enrollName.trim().toUpperCase(),
+            age: calcAge,
+            type: 'COMELEC Enrolled Citizen',
+            previousBarangayId: null,
+            rawAddress: decAddr,
+            declared_address: decAddr,
+            submittedAt: new Date().toISOString(),
+            submittedVia: 'COMELEC Central Registry',
+            batchId: null,
+            supportingDoc: { type: 'COMELEC ID', barangayId: 'MAL' },
+            yearsAtAddress: 4,
+            synthetic: false,
+            photo_base64: enrollPhoto,
+            biometrics: {
+              enrolled: true,
+              voter_id: res.voter_id,
+              vin: res.vin,
+              hash: 'SHA256:LOCAL_RAM',
+              status: 'REGISTERED / ELIGIBLE'
+            },
+            isComelecEnrolled: true,
+            label: 'Low',
+            score: 20
+          }
+        });
+      }
 
       setSuccessMsg(`Official Voter ID ${res.vin} generated for ${res.name}!`);
       setEnrollName('');
@@ -447,13 +492,27 @@ export default function ComelecRegistry() {
                 </div>
 
                 <div className="field">
-                  <label htmlFor="c-brgy">Barangay Address</label>
+                  <label htmlFor="c-brgy">Barangay Ward</label>
                   <input
                     id="c-brgy"
                     type="text"
                     value={enrollBarangay}
                     onChange={(e) => setEnrollBarangay(e.target.value)}
                   />
+                </div>
+
+                <div className="field">
+                  <label htmlFor="c-daddr" style={{ fontWeight: 700, color: 'var(--blue)' }}>Declared Address (Street, Building, or Residence)</label>
+                  <input
+                    id="c-daddr"
+                    type="text"
+                    value={enrollDeclaredAddress}
+                    onChange={(e) => setEnrollDeclaredAddress(e.target.value)}
+                    placeholder="e.g. 2401 Taft Ave / Fidel Reyes St, Malate, Manila"
+                  />
+                  <div className="small muted" style={{ marginTop: 2 }}>
+                    ✓ Auto-fills into Biometric Intake without re-typing.
+                  </div>
                 </div>
 
                 {/* Photo Capture Section */}
