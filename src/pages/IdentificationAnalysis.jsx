@@ -5,6 +5,7 @@ import { normalizeAddress } from '../lib/address.js'
 import { simulatedEmbeddingFromFile, cosine } from '../lib/handwriting.js'
 import { HandwritingSample } from '../components/Handwriting.jsx'
 import BiometricIntakeCapture from '../components/BiometricIntakeCapture.jsx'
+import SignatureArena from '../components/SignatureArena.jsx'
 import { getComelecVoters, registerComelecVoter, clearAllComelecVoters } from '../lib/api.js'
 import { 
   ScanFace, PenTool, IdCard, CheckCircle2, AlertTriangle, 
@@ -365,6 +366,7 @@ export default function IdentificationAnalysis() {
         onChange={setTab} 
         tabs={[
           { id: 'facial', label: 'Dual-Face Attendance (IN & OUT) & Biometrics', icon: ScanFace },
+          { id: 'signature', label: 'Forensic Signature Validation & Collusion', icon: PenTool },
           { id: 'handwriting', label: 'Handwriting Similarity (Batch Forgery Detector)', icon: PenTool },
           { id: 'registry', label: `COMELEC Mock Registry (${comelecVoters.length})`, icon: IdCard }
         ]} 
@@ -550,6 +552,9 @@ export default function IdentificationAnalysis() {
           </Card>
         </div>
       )}
+
+      {/* ----------------- TAB: SIGNATURE INTELLIGENCE & COLLUSION ----------------- */}
+      {tab === 'signature' && <SignatureArena />}
 
       {/* ----------------- TAB 2: HANDWRITING SIMILARITY (BATCH FORGERY) ----------------- */}
       {tab === 'handwriting' && (

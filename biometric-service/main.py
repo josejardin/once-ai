@@ -16,6 +16,7 @@ os.environ["PYTHONIOENCODING"] = "utf-8"
 
 from face_engine import decode_base64_to_ram_image, extract_512d_embedding, apply_crypto_salt, compute_cosine_similarity
 from cloud_db import cloud_db
+from signature_service import router as signature_router
 
 app = FastAPI(
     title="ONCE AI - Centralized Anti-Flying Voter Verification Engine",
@@ -31,7 +32,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# COMELEC Central Voter Registry
+app.include_router(signature_router)
+
+# COMELEC Central Voter Registry (Starts completely clean - zero dummy IDs)
 COMELEC_VOTER_REGISTRY: Dict[str, Dict] = {}
 
 # Attendance & Dual Face Biometric Tracking (Face IN & Face OUT)

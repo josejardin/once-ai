@@ -56,26 +56,99 @@ export function compareDocuments(apps, threshold) {
   return { pairs, groups }
 }
 
-// Deterministic pseudo-handwriting strokes derived from an embedding (for visual side-by-side comparison only).
-export function strokesFromEmbedding(emb, width = 320, height = 120) {
-  const e = (i) => emb[i % emb.length]
-  const slant = e(0) * 0.25
-  const amp = 10 + Math.abs(e(1)) * 7
-  const freq = 0.05 + Math.abs(e(2)) * 0.02
-  const loop = e(3) * 4
-  const wobble = e(4) * 2.5
-  const pressure = 1.3 + Math.abs(e(5)) * 0.6
-  const lines = []
-  for (let l = 0; l < 3; l++) {
-    const baseY = 28 + l * 34 + e(6 + l) * 2
-    const len = width - 40 - Math.abs(e(9 + l)) * 22
-    let d = `M ${14 + e(12 + l) * 3} ${baseY}`
-    for (let x = 0; x <= len; x += 6) {
-      const px = 14 + x + (baseY - 28) * slant * 0.05
-      const py = baseY + Math.sin(x * freq + e(15 + l)) * amp * 0.5 * Math.sin(x * 0.021 + l) + Math.cos(x * freq * 2.3) * loop + Math.sin(x * 0.11) * wobble
-      d += ` L ${px.toFixed(1)} ${py.toFixed(1)}`
-    }
-    lines.push(d)
+/**
+ * Generates a human-like cursive "pldt" pen stroke path from the synthetic embedding.
+ *
+ * Design goals:
+ * - Stroke-only (fill:none), pen-weight lines — looks like actual ink on paper
+ * - Each embedding produces slightly different slant, letter spacing, wobble, and loop size
+ * - Two similar embeddings produce visually similar (but not identical) specimens
+ * - Clearly readable cursive "p l d t" letterforms
+ */
+export function strokesFromEmbedding(emb, width = 300, height = 110) {
+  const e = (i) => (emb && emb.length > 0 ? emb[i % emb.length] : 0)
+
+  // Extract personality traits from the 24-D embedding
+  const slant    = e(0) * 6          // writing angle: -6 to +6 degrees
+  const loopH    = 1 + e(1) * 0.18  // ascender loop height scale
+  const loopW    = 1 + e(2) * 0.14  // letter width scale
+  const wobble   = e(3) * 1.4       // baseline wobble ±1.4px
+  const spacing  = 1 + e(4) * 0.12  // letter spacing scale
+  const pressure = 1.55 + Math.abs(e(5)) * 0.55  // pen weight 1.55–2.1px
+  const lift     = e(6) * 2.8       // vertical drift across word
+  const tCross   = 38 + e(7) * 5    // T crossbar height variation
+
+  // Helper: apply slant and natural hand-wobble to a point
+  const tx = (x, y) => x + (y - 75) * Math.tan((slant * Math.PI) / 180)
+  const wy = (y, x) => y + Math.sin(x * 0.11 + e(8)) * wobble + (x / 280) * lift
+
+  // We build cubic bezier paths for each letter, anchored at a baseline of y=78
+  // Letters connect to each other naturally via exit/entry strokes
+  // Origin x starts at 28, letters advance by ~spacing factor
+
+  const sp = spacing  // shorthand
+  const lh = loopH
+  const lw = loopW
+
+  // ---- p ----
+  // Descender going down, then up into the bowl, exit right
+  const px0 = 28
+  const pathP = `
+    M ${tx(px0, 78)},${wy(78, px0)}
+    C ${tx(px0 - 2, 88)},${wy(88, px0 - 2)} ${tx(px0 - 3, 100)},${wy(100, px0 - 3)} ${tx(px0 - 2, 108)},${wy(108, px0 - 2)}
+    M ${tx(px0, 78)},${wy(78, px0)}
+    C ${tx(px0 + 2, 64)},${wy(64, px0 + 2)} ${tx(px0 + 14 * lw, 55 * lh)},${wy(55 * lh, px0 + 14 * lw)} ${tx(px0 + 16 * lw, 64)},${wy(64, px0 + 16 * lw)}
+    C ${tx(px0 + 18 * lw, 72)},${wy(72, px0 + 18 * lw)} ${tx(px0 + 14 * lw, 79)},${wy(79, px0 + 14 * lw)} ${tx(px0 + 8 * lw, 80)},${wy(80, px0 + 8 * lw)}
+    C ${tx(px0 + 10 * lw, 78)},${wy(78, px0 + 10 * lw)} ${tx(px0 + 20 * lw, 76)},${wy(76, px0 + 20 * lw)} ${tx(px0 + 22 * lw, 77)},${wy(77, px0 + 22 * lw)}
+  `.trim()
+
+  // ---- l ----
+  // Tall ascender loop, descend to baseline, exit right
+  const lx0 = px0 + 26 * sp * lw
+  const pathL = `
+    M ${tx(lx0, 77)},${wy(77, lx0)}
+    C ${tx(lx0 + 2, 60)},${wy(60, lx0 + 2)} ${tx(lx0 + 6, 32 * lh)},${wy(32 * lh, lx0 + 6)} ${tx(lx0 + 10, 28 * lh)},${wy(28 * lh, lx0 + 10)}
+    C ${tx(lx0 + 13, 26 * lh)},${wy(26 * lh, lx0 + 13)} ${tx(lx0 + 16, 30 * lh)},${wy(30 * lh, lx0 + 16)} ${tx(lx0 + 14, 42 * lh)},${wy(42 * lh, lx0 + 14)}
+    C ${tx(lx0 + 12, 56)},${wy(56, lx0 + 12)} ${tx(lx0 + 10, 72)},${wy(72, lx0 + 10)} ${tx(lx0 + 12, 78)},${wy(78, lx0 + 12)}
+    C ${tx(lx0 + 14, 80)},${wy(80, lx0 + 14)} ${tx(lx0 + 20 * lw, 78)},${wy(78, lx0 + 20 * lw)} ${tx(lx0 + 23 * lw, 78)},${wy(78, lx0 + 23 * lw)}
+  `.trim()
+
+  // ---- d ----
+  // Small oval loop + tall ascender, exit right
+  const dx0 = lx0 + 27 * sp * lw
+  const pathD = `
+    M ${tx(dx0 + 14 * lw, 64)},${wy(64, dx0 + 14 * lw)}
+    C ${tx(dx0 + 16 * lw, 54)},${wy(54, dx0 + 16 * lw)} ${tx(dx0 + 10 * lw, 50)},${wy(50, dx0 + 10 * lw)} ${tx(dx0 + 4 * lw, 54)},${wy(54, dx0 + 4 * lw)}
+    C ${tx(dx0 - 2, 60)},${wy(60, dx0 - 2)} ${tx(dx0 - 3, 70)},${wy(70, dx0 - 3)} ${tx(dx0 + 2 * lw, 77)},${wy(77, dx0 + 2 * lw)}
+    C ${tx(dx0 + 6 * lw, 82)},${wy(82, dx0 + 6 * lw)} ${tx(dx0 + 14 * lw, 80)},${wy(80, dx0 + 14 * lw)} ${tx(dx0 + 16 * lw, 74)},${wy(74, dx0 + 16 * lw)}
+    M ${tx(dx0 + 14 * lw, 64)},${wy(64, dx0 + 14 * lw)}
+    C ${tx(dx0 + 14 * lw, 52)},${wy(52, dx0 + 14 * lw)} ${tx(dx0 + 16 * lw, 36 * lh)},${wy(36 * lh, dx0 + 16 * lw)} ${tx(dx0 + 18 * lw, 30 * lh)},${wy(30 * lh, dx0 + 18 * lw)}
+    C ${tx(dx0 + 20 * lw, 26 * lh)},${wy(26 * lh, dx0 + 20 * lw)} ${tx(dx0 + 24 * lw, 28 * lh)},${wy(28 * lh, dx0 + 24 * lw)} ${tx(dx0 + 22 * lw, 42)},${wy(42, dx0 + 22 * lw)}
+    C ${tx(dx0 + 20 * lw, 56)},${wy(56, dx0 + 20 * lw)} ${tx(dx0 + 18 * lw, 72)},${wy(72, dx0 + 18 * lw)} ${tx(dx0 + 20 * lw, 78)},${wy(78, dx0 + 20 * lw)}
+    C ${tx(dx0 + 22 * lw, 80)},${wy(80, dx0 + 22 * lw)} ${tx(dx0 + 28 * lw, 78)},${wy(78, dx0 + 28 * lw)} ${tx(dx0 + 30 * lw, 78)},${wy(78, dx0 + 30 * lw)}
+  `.trim()
+
+  // ---- t ----
+  // Upstroke stem + crossbar + tail exit
+  const ttx0 = dx0 + 34 * sp * lw
+  const pathT = `
+    M ${tx(ttx0, 78)},${wy(78, ttx0)}
+    C ${tx(ttx0 + 2, 64)},${wy(64, ttx0 + 2)} ${tx(ttx0 + 4, 46)},${wy(46, ttx0 + 4)} ${tx(ttx0 + 4, 36)},${wy(36, ttx0 + 4)}
+    C ${tx(ttx0 + 4, 30)},${wy(30, ttx0 + 4)} ${tx(ttx0 + 6, 28)},${wy(28, ttx0 + 6)} ${tx(ttx0 + 8, 30)},${wy(30, ttx0 + 8)}
+    C ${tx(ttx0 + 8, 36)},${wy(36, ttx0 + 8)} ${tx(ttx0 + 6, 56)},${wy(56, ttx0 + 6)} ${tx(ttx0 + 8, 72)},${wy(72, ttx0 + 8)}
+    C ${tx(ttx0 + 10, 80)},${wy(80, ttx0 + 10)} ${tx(ttx0 + 16 * lw, 82)},${wy(82, ttx0 + 16 * lw)} ${tx(ttx0 + 18 * lw, 80)},${wy(80, ttx0 + 18 * lw)}
+  `.trim()
+
+  // T crossbar — floats independently
+  const pathCross = `
+    M ${tx(ttx0 - 6, tCross)},${wy(tCross, ttx0 - 6)}
+    C ${tx(ttx0, tCross - 2)},${wy(tCross - 2, ttx0)} ${tx(ttx0 + 14, tCross + 1)},${wy(tCross + 1, ttx0 + 14)} ${tx(ttx0 + 18, tCross - 1)},${wy(tCross - 1, ttx0 + 18)}
+  `.trim()
+
+  return {
+    strokes: [pathP, pathL, pathD, pathT, pathCross],
+    pressure,
+    width,
+    height
   }
-  return { lines, pressure, width, height }
 }
