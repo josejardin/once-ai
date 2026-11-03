@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { 
   Camera, Upload, CheckCircle2, ShieldCheck, AlertTriangle, 
-  RefreshCw, X, Lock, ArrowRight, Clock, UserCheck, Play, Zap, AlertOctagon 
+  RefreshCw, X, Lock, ArrowRight, Clock, UserCheck, Play, Zap, AlertOctagon, Building2 
 } from 'lucide-react';
 import { calculateFaceAlignedMetrics, cropFaceCanvas } from '../lib/livenessCalculations.js';
 import { Badge } from './ui.jsx';
@@ -24,6 +24,9 @@ export default function BiometricIntakeCapture({
   const [analyzing, setAnalyzing] = useState(false);
   const [bioResult, setBioResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  // Terminal Polling Station Location
+  const [terminalPrecinct, setTerminalPrecinct] = useState('Precinct 303 - Pasay');
 
   // Session state across IN & OUT
   const [attendanceSession, setAttendanceSession] = useState(null);
@@ -209,14 +212,14 @@ export default function BiometricIntakeCapture({
     try {
       const vId = selectedVoter?.voter_id || attendanceSession?.voter_id || `VOTER-${Date.now().toString(36).toUpperCase()}`;
       const vName = selectedVoter?.name || attendanceSession?.voter_name || applicantName || 'CITIZEN';
-      const precinct = selectedVoter?.precinct_id || 'Precinct 101 - Manila';
+      const currentTerminalPrecinct = terminalPrecinct || 'Precinct 303 - Pasay';
 
       if (stage === 'IN') {
         // STAGE 1: FACE IN (ATTENDANCE CHECK-IN)
         const data = await verifyFaceIn({
           voter_id: vId,
           voter_name: vName,
-          precinct_id: precinct,
+          precinct_id: currentTerminalPrecinct,
           image_base64: photoBase64,
           liveness_passed: true,
           challenges_completed: ['BLINK', 'SMILE']
@@ -235,13 +238,15 @@ export default function BiometricIntakeCapture({
         }
 
         if (onBiometricChange) {
+          const isFlying = data.status === 'FLYING_VOTER_BLOCKED';
           onBiometricChange({
             photo_base64: photoBase64,
             voter_id: vId,
-            vin: selectedVoter?.vin || `VIN-${vId.slice(-4)}`,
-            biometric_hash: data.status === 'VERIFIED' ? `FACE-IN-VERIFIED (${data.id_match_confidence}%)` : 'MISMATCHED',
+            vin: selectedVoter?.vin || data.vin || `VIN-${vId.slice(-4)}`,
+            biometric_hash: isFlying ? 'BLOCKED_FLYING_VOTER' : (data.status === 'VERIFIED' ? `FACE-IN-VERIFIED (${data.id_match_confidence}%)` : 'MISMATCHED'),
             status: data.status,
             stage: 'FACE_IN',
+            timing_anomaly: isFlying ? data.timing_anomaly : null,
             ballot_serial: data.ballot_serial,
             face_in_time: data.face_in_timestamp,
             isMatch: data.status === 'VERIFIED'
@@ -286,6 +291,59 @@ export default function BiometricIntakeCapture({
     await processBiometricSubmission(photoToUse, durationSec);
   };
 
+  const testFlyingVoterAttack = async () => {
+    setTerminalPrecinct('Precinct 303 - Pasay');
+    const photoToUse = photo || selectedVoter?.photo_base64 || 'data:image/jpeg;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    const vId = selectedVoter?.voter_id || 'VOTER-QC-FLYING';
+    const vName = selectedVoter?.name || 'FERNANDO PO (QC RESIDENT)';
+    
+    // Ensure citizen is registered in Quezon City
+    try {
+      await registerComelecVoter({
+        name: vName,
+        precinct_id: 'Precinct 202 - Quezon City',
+        barangay: 'Barangay Central, Quezon City',
+        declared_address: 'Quezon Ave, Quezon City',
+        photo_base64: photoToUse
+      });
+    } catch (e) {}
+
+    setPhoto(photoToUse);
+    setAnalyzing(true);
+    setErrorMsg(null);
+
+    try {
+      const data = await verifyFaceIn({
+        voter_id: vId,
+        voter_name: vName,
+        precinct_id: 'Precinct 303 - Pasay', // Intentionally different terminal!
+        image_base64: photoToUse,
+        liveness_passed: true
+      });
+      setBioResult(data);
+      if (onBiometricChange) {
+        onBiometricChange({
+          photo_base64: photoToUse,
+          voter_id: vId,
+          vin: data.vin || `VIN-QC-9921`,
+          biometric_hash: 'BLOCKED_FLYING_VOTER',
+          status: 'FLYING_VOTER_BLOCKED',
+          stage: 'FACE_IN',
+          timing_anomaly: data.timing_anomaly || {
+            flag: 'FLYING_VOTER_BLOCKED',
+            severity: 'CRITICAL',
+            reason: 'Registered in Quezon City, attempting to vote in Pasay.'
+          },
+          isMatch: false
+        });
+      }
+    } catch (err) {
+      setErrorMsg(`Server error: ${err.message}`);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   function clearSession() {
     setPhoto(null);
     setBioResult(null);
@@ -298,6 +356,110 @@ export default function BiometricIntakeCapture({
 
   return (
     <div className="field" style={{ gap: 12 }}>
+      {/* Polling Terminal Location Header */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        background: 'var(--panel2)',
+        border: '1.5px solid var(--border)',
+        borderRadius: 12,
+        padding: '8px 12px',
+        flexWrap: 'wrap',
+        gap: 8
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          <Building2 size={16} color="var(--blue)" />
+          <span><b>Intake Polling Terminal Station:</b></span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <select
+            value={terminalPrecinct}
+            onChange={(e) => setTerminalPrecinct(e.target.value)}
+            style={{ fontWeight: 700, padding: '5px 10px', borderRadius: 8, fontSize: 12, background: 'var(--panel)', border: '1px solid var(--border)' }}
+          >
+            <option value="Precinct 303 - Pasay">Precinct 303 - Pasay</option>
+            <option value="Precinct 101 - Manila (DLSU Ward)">Precinct 101 - Manila (DLSU Ward)</option>
+            <option value="Precinct 202 - Quezon City">Precinct 202 - Quezon City</option>
+            <option value="Precinct 404 - Pasig">Precinct 404 - Pasig</option>
+          </select>
+          <button
+            type="button"
+            className="btn sm"
+            style={{
+              background: '#fef2f2',
+              border: '1.5px solid #f87171',
+              color: '#991b1b',
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '5px 10px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              cursor: 'pointer'
+            }}
+            onClick={testFlyingVoterAttack}
+            title="Demonstrate instant Flying Voter detection (Quezon City voter attempting to vote in Pasay)"
+          >
+            <AlertTriangle size={13} />
+            <span>⚡ Test Flying Voter Attack (QC ➔ Pasay)</span>
+          </button>
+        </div>
+      </div>
+
+      {selectedVoter && selectedVoter.precinct_id && selectedVoter.precinct_id !== terminalPrecinct && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.08)',
+          border: '1.5px dashed #f87171',
+          borderRadius: 8,
+          padding: '8px 12px',
+          fontSize: 12,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          color: '#991b1b'
+        }}>
+          <div>
+            ⚠️ <b>Cross-Precinct Mismatch:</b> Voter registered in <b>{selectedVoter.precinct_id}</b>, but terminal is set to <b>{terminalPrecinct}</b>.
+          </div>
+          <Badge tone="high">WILL FLAG FLYING VOTER</Badge>
+        </div>
+      )}
+
+      {/* FLYING VOTER INTERCEPTED BANNER */}
+      {bioResult?.status === 'FLYING_VOTER_BLOCKED' && (
+        <div style={{
+          background: '#fef2f2',
+          border: '2px solid #dc2626',
+          borderRadius: 14,
+          padding: '16px 18px',
+          boxShadow: '0 4px 16px rgba(220, 38, 38, 0.25)',
+          textAlign: 'left'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#991b1b' }}>
+            <AlertOctagon size={26} color="#dc2626" />
+            <div>
+              <b style={{ fontSize: 16 }}>🚨 SUSPECTED FLYING VOTER INTERCEPTED!</b>
+              <div style={{ fontSize: 13, color: '#7f1d1d', marginTop: 3 }}>
+                Registered in: <span className="badge mod" style={{ fontWeight: 800 }}>{bioResult.registered_precinct || bioResult.assigned_precinct || 'Quezon City (Precinct 202)'}</span> ➔ Attempted Terminal: <span className="badge high" style={{ fontWeight: 800 }}>{bioResult.current_precinct || terminalPrecinct}</span>
+              </div>
+            </div>
+          </div>
+          <p style={{ margin: '10px 0 8px 0', fontSize: 13, color: '#991b1b', lineHeight: 1.5 }}>
+            {bioResult.message || 'Citizen attempted to cast a ballot in a different jurisdiction without an approved COMELEC Transfer of Registration.'}
+          </p>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Badge tone="high">CRITICAL FRAUD INTERCEPTED</Badge>
+            <a href="#/cases" className="btn sm danger" style={{ background: '#dc2626', color: '#fff', textDecoration: 'none', padding: '6px 12px', borderRadius: 6, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span>View in ERB Case Queue ➔</span>
+            </a>
+            <a href="#/geo" className="btn sm" style={{ textDecoration: 'none', padding: '6px 12px', borderRadius: 6, fontWeight: 600 }}>
+              <span>Track on Spatial Map ➔</span>
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* Stage Selector Header: 2 Facial Recognitions (IN vs OUT) */}
       <div style={{
         display: 'flex',

@@ -375,25 +375,51 @@ def verify_face_in(payload: FaceInCheckinRequest):
             "ballot_serial": target_voter.get("ballot_serial")
         }
 
-    # 3. Check Assigned Polling Precinct
+    # 3. Check Assigned Polling Precinct (Immediate Flying Voter Interception)
     if target_voter and target_voter.get("precinct_id") and target_voter["precinct_id"] != payload.precinct_id:
         audit_entry = {
             "id": str(uuid.uuid4())[:8],
             "timestamp": timestamp_str,
             "voter_id": payload.voter_id,
             "precinct_id": payload.precinct_id,
-            "event": "WRONG_PRECINCT_INTERCEPTED",
-            "details": f"Citizen {target_voter['name']} assigned to '{target_voter['precinct_id']}' attempted to check in at '{payload.precinct_id}'.",
-            "status": "WRONG_PRECINCT"
+            "event": "FLYING_VOTER_INTERCEPTED",
+            "details": f"🚨 SUSPECTED FLYING VOTER: Citizen {target_voter['name']} registered at '{target_voter['precinct_id']}' attempted to vote at terminal '{payload.precinct_id}'. Cross-precinct attempt blocked.",
+            "status": "FLYING_VOTER_BLOCKED"
         }
         AUDIT_LOGS.insert(0, audit_entry)
+
+        anomaly_data = {
+            "flag": "FLYING_VOTER_BLOCKED",
+            "severity": "CRITICAL",
+            "reason": f"Cross-precinct jump: Registered in {target_voter['precinct_id']}, attempting to vote at {payload.precinct_id}",
+            "explanation": f"Citizen {target_voter['name']} is officially registered in {target_voter['precinct_id']}, but attempted to cast a ballot at polling station {payload.precinct_id}. Intercepted as a suspected flying voter."
+        }
+
+        VOTING_ATTENDANCE[payload.voter_id] = {
+            "voter_id": payload.voter_id,
+            "voter_name": target_voter["name"],
+            "vin": target_voter.get("vin"),
+            "precinct_id": payload.precinct_id,
+            "registered_precinct": target_voter["precinct_id"],
+            "status": "BLOCKED (FLYING VOTER JUMP)",
+            "face_in_timestamp": timestamp_str,
+            "face_in_epoch": current_epoch,
+            "photo_id_base64": target_voter.get("photo_base64"),
+            "photo_in_base64": payload.image_base64,
+            "timing_anomaly": anomaly_data
+        }
+        target_voter["registration_status"] = "BLOCKED (FLYING VOTER INCIDENT)"
+
         return {
-            "status": "WRONG_PRECINCT",
-            "message": f"WRONG PRECINCT: Citizen {target_voter['name']} is officially registered at '{target_voter['precinct_id']}'. This terminal is '{payload.precinct_id}'.",
+            "status": "FLYING_VOTER_BLOCKED",
+            "anomaly_flag": "FLYING_VOTER_BLOCKED",
+            "message": f"🚨 SUSPECTED FLYING VOTER: Citizen {target_voter['name']} is officially registered at '{target_voter['precinct_id']}'. This polling terminal is '{payload.precinct_id}'. Cross-precinct voting without approved transfer is strictly prohibited.",
             "assigned_precinct": target_voter["precinct_id"],
+            "registered_precinct": target_voter["precinct_id"],
             "current_precinct": payload.precinct_id,
             "voter_name": target_voter["name"],
-            "vin": target_voter["vin"]
+            "vin": target_voter["vin"],
+            "timing_anomaly": anomaly_data
         }
 
     try:
@@ -444,6 +470,12 @@ def verify_face_in(payload: FaceInCheckinRequest):
         )
         
         if is_flying_voter and match is not None:
+            anomaly_data = {
+                "flag": "FLYING_VOTER_BLOCKED",
+                "severity": "CRITICAL",
+                "reason": f"Biometric duplicate: Already checked in at {match['precinct_id']} at {match['checked_in_at']}",
+                "explanation": f"Centralized sovereign cloud biometrics detected an identical facial vector already checked in at {match['precinct_id']}. Suspected multiple/flying voter blocked."
+            }
             audit_entry = {
                 "id": str(uuid.uuid4())[:8],
                 "timestamp": timestamp_str,
@@ -457,16 +489,29 @@ def verify_face_in(payload: FaceInCheckinRequest):
                 "status": "CRITICAL_FRAUD_PREVENTED"
             }
             AUDIT_LOGS.insert(0, audit_entry)
+
+            VOTING_ATTENDANCE[payload.voter_id] = {
+                "voter_id": payload.voter_id,
+                "voter_name": target_voter["name"] if target_voter else payload.voter_name,
+                "vin": target_voter.get("vin") if target_voter else None,
+                "precinct_id": payload.precinct_id,
+                "status": "BLOCKED (1:N CLOUD DUPLICATE)",
+                "face_in_timestamp": timestamp_str,
+                "face_in_epoch": current_epoch,
+                "timing_anomaly": anomaly_data
+            }
             
             return {
                 "status": "FLYING_VOTER_BLOCKED",
+                "anomaly_flag": "FLYING_VOTER_BLOCKED",
                 "message": f"ILLEGAL VOTER DUPLICATION DETECTED: This individual already checked in at '{match['precinct_id']}' at {match['checked_in_at']}.",
                 "original_precinct_id": match["precinct_id"],
                 "original_voter_id": match["voter_id"],
                 "checked_in_at": match["checked_in_at"],
                 "similarity_confidence": round(similarity * 100, 1),
                 "current_precinct_id": payload.precinct_id,
-                "voter_id": payload.voter_id
+                "voter_id": payload.voter_id,
+                "timing_anomaly": anomaly_data
             }
 
         # 7. Record Ephemeral Biometric Vector in Central Cloud DB
