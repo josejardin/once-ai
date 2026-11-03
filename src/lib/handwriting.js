@@ -56,26 +56,72 @@ export function compareDocuments(apps, threshold) {
   return { pairs, groups }
 }
 
-// Deterministic pseudo-handwriting strokes derived from an embedding (for visual side-by-side comparison only).
-export function strokesFromEmbedding(emb, width = 320, height = 120) {
-  const e = (i) => emb[i % emb.length]
-  const slant = e(0) * 0.25
-  const amp = 10 + Math.abs(e(1)) * 7
-  const freq = 0.05 + Math.abs(e(2)) * 0.02
-  const loop = e(3) * 4
-  const wobble = e(4) * 2.5
-  const pressure = 1.3 + Math.abs(e(5)) * 0.6
-  const lines = []
-  for (let l = 0; l < 3; l++) {
-    const baseY = 28 + l * 34 + e(6 + l) * 2
-    const len = width - 40 - Math.abs(e(9 + l)) * 22
-    let d = `M ${14 + e(12 + l) * 3} ${baseY}`
-    for (let x = 0; x <= len; x += 6) {
-      const px = 14 + x + (baseY - 28) * slant * 0.05
-      const py = baseY + Math.sin(x * freq + e(15 + l)) * amp * 0.5 * Math.sin(x * 0.021 + l) + Math.cos(x * freq * 2.3) * loop + Math.sin(x * 0.11) * wobble
-      d += ` L ${px.toFixed(1)} ${py.toFixed(1)}`
-    }
-    lines.push(d)
+// Deterministic cursive handwriting strokes ("PLDT" cursive script) derived from an embedding
+// Allows side-by-side visual forensic comparison showing matching vs differing penmanship.
+export function strokesFromEmbedding(emb, width = 340, height = 125) {
+  const e = (i) => (emb && emb.length > i ? emb[i % emb.length] : 0)
+
+  const slant = (e(0) || 0) * 0.22
+  const scaleX = 1 + (e(1) || 0) * 0.08
+  const scaleY = 1 + (e(2) || 0) * 0.1
+  const loopW = (e(3) || 0) * 3
+  const wobble = (e(4) || 0) * 1.2
+  const pressure = Math.max(1.8, Math.min(3.2, 2.3 + (e(5) || 0) * 0.4))
+  const flourishLift = (e(6) || 0) * 5
+
+  // Transform point (x, y) with anchor at (45, 75)
+  const T = (x, y) => {
+    const dx = (x - 45) * scaleX
+    const dy = (y - 75) * scaleY
+    const finalX = 45 + dx + dy * slant
+    const finalY = 75 + dy + Math.sin(x * 0.08) * wobble
+    return `${finalX.toFixed(1)} ${finalY.toFixed(1)}`
   }
+
+  // Cursive "PLDT" paths:
+  // Letter P: Downstroke stem + graceful top loop cap + connector
+  const pathP = [
+    `M ${T(48, 32)} Q ${T(46, 56)} ${T(44, 86)}`,
+    `M ${T(45, 36)} C ${T(66, 24)} ${T(84, 32)} ${T(82, 52)} C ${T(80, 68)} ${T(60, 72)} ${T(45, 70)}`,
+    `M ${T(45, 70)} Q ${T(58, 80)} ${T(74, 82)}`
+  ]
+
+  // Letter L: Ascender loop soaring up from baseline, then descending to baseline loop
+  const pathL = [
+    `M ${T(74, 82)} C ${T(88, 52)} ${T(102, 20)} ${T(96, 16)} C ${T(90, 14)} ${T(80, 38)} ${T(82, 84)}`,
+    `M ${T(82, 84)} Q ${T(78 + loopW, 88)} ${T(92, 86)} Q ${T(110, 84)} ${T(122, 78)}`
+  ]
+
+  // Letter D: Classical cursive D bowl + tall ascender stem
+  const pathD = [
+    `M ${T(122, 78)} C ${T(115, 60)} ${T(116, 48)} ${T(128, 48)} C ${T(138, 48)} ${T(136, 70)} ${T(134, 84)}`,
+    `M ${T(134, 84)} C ${T(142, 52)} ${T(148, 18)} ${T(144, 15)} C ${T(140, 14)} ${T(132, 42)} ${T(135, 84)} Q ${T(148, 82)} ${T(162, 78)}`
+  ]
+
+  // Letter T: Upward cursive stem + finish flick + crossed flourish
+  const pathT = [
+    `M ${T(162, 78)} Q ${T(174, 46)} ${T(175, 22)} Q ${T(172, 58)} ${T(170, 86)} Q ${T(178, 88)} ${T(188, 80)}`,
+    `M ${T(156, 36)} Q ${T(176, 28 + flourishLift * 0.3)} ${T(202, 34)}`
+  ]
+
+  // Dynamic Signature Underline / Flourish:
+  const pathFlourish = [
+    `M ${T(36, 96)} C ${T(95, 108 + flourishLift)} ${T(180, 104)} ${T(255, 90)} Q ${T(275, 84)} ${T(285, 92)}`
+  ]
+
+  // Secondary cursive endorsement script ("specimen / voter sign"):
+  const pathEndorsement = [
+    `M ${T(215, 65)} Q ${T(228, 55)} ${T(235, 68)} T ${T(252, 64)} T ${T(270, 68)} Q ${T(290, 60)} ${T(305, 68)}`
+  ]
+
+  const lines = [
+    ...pathP,
+    ...pathL,
+    ...pathD,
+    ...pathT,
+    ...pathFlourish,
+    ...pathEndorsement
+  ]
+
   return { lines, pressure, width, height }
 }
