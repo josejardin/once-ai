@@ -56,72 +56,35 @@ export function compareDocuments(apps, threshold) {
   return { pairs, groups }
 }
 
-// Deterministic cursive handwriting strokes ("PLDT" cursive script) derived from an embedding
-// Allows side-by-side visual forensic comparison showing matching vs differing penmanship.
-export function strokesFromEmbedding(emb, width = 340, height = 125) {
+// Exact high-precision vector paths for lowercase cursive "pldt" script
+export const PLDT_CURSIVE_PATHS = [
+  // Letter 'p' (descender + bowl)
+  "M 121.3 50.6 L 118.6 49.9 L 113.9 50.2 L 109.8 52.9 L 104.8 58.6 L 104.4 57.0 L 105.4 53.6 L 105.4 49.5 L 104.1 47.8 L 102.4 47.2 L 100.7 47.2 L 99.7 48.2 L 99.7 50.9 L 98.7 55.3 L 98.4 60.3 L 97.4 64.0 L 97.0 68.4 L 96.0 71.5 L 95.3 76.5 L 94.6 77.6 L 94.3 80.2 L 93.3 82.3 L 93.0 84.6 L 91.9 86.3 L 91.6 88.7 L 90.6 90.4 L 90.3 92.7 L 88.9 95.8 L 88.9 98.1 L 90.6 100.2 L 91.9 100.2 L 93.3 98.8 L 93.6 97.5 L 94.3 96.8 L 94.6 94.8 L 97.0 88.7 L 97.4 86.0 L 98.4 83.6 L 99.0 79.6 L 99.7 78.6 L 100.0 75.9 L 101.1 73.5 L 101.4 70.5 L 102.8 65.7 L 105.4 61.4 L 110.2 56.0 L 111.2 55.6 L 112.2 54.6 L 114.2 54.3 L 115.2 53.6 L 116.2 53.6 L 118.3 54.6 L 120.0 57.0 L 120.3 59.3 L 120.0 63.7 L 117.3 69.4 L 112.5 74.5 L 107.5 77.2 L 102.8 77.2 L 102.1 77.6 L 102.1 78.6 L 105.4 79.9 L 107.5 79.9 L 110.2 78.9 L 112.2 78.9 L 117.3 75.9 L 122.3 70.1 L 125.4 63.7 L 125.7 56.3 L 124.0 52.9 Z",
+  // Connected 'ldt' letters (outer boundary)
+  "M 152.0 19.5 L 148.6 22.9 L 143.2 31.0 L 136.2 44.5 L 136.2 45.5 L 134.5 49.2 L 133.8 49.9 L 133.5 51.9 L 132.1 54.3 L 131.8 56.3 L 131.1 57.3 L 129.8 61.7 L 128.4 67.8 L 128.1 72.2 L 128.4 74.2 L 129.8 77.6 L 131.1 78.9 L 133.1 79.9 L 135.8 80.2 L 137.2 79.9 L 138.5 78.9 L 140.2 78.6 L 145.3 73.8 L 146.0 74.5 L 146.0 75.5 L 147.0 77.6 L 148.3 78.9 L 149.0 78.9 L 151.4 80.2 L 152.7 80.2 L 156.8 78.6 L 159.8 76.2 L 166.9 67.8 L 167.6 68.8 L 166.9 70.8 L 167.2 76.5 L 169.2 78.9 L 171.6 79.9 L 173.0 79.9 L 175.0 78.9 L 177.0 78.6 L 178.0 77.6 L 178.7 77.6 L 184.1 72.2 L 185.1 72.5 L 185.1 75.5 L 186.1 78.2 L 187.8 79.9 L 191.8 81.6 L 194.9 81.3 L 196.9 80.2 L 198.9 79.9 L 203.7 76.5 L 206.4 73.8 L 206.7 72.8 L 209.1 70.1 L 209.4 68.8 L 210.4 67.8 L 211.1 65.4 L 210.1 64.7 L 209.4 65.1 L 208.7 67.1 L 207.7 68.1 L 207.7 68.8 L 203.0 74.5 L 198.9 77.2 L 195.2 78.2 L 192.2 77.2 L 190.8 75.5 L 190.5 74.5 L 190.5 68.1 L 191.2 64.7 L 191.8 63.4 L 191.8 62.0 L 192.9 60.0 L 193.5 57.0 L 195.2 54.3 L 201.3 54.3 L 205.4 53.2 L 209.7 53.2 L 210.4 52.2 L 209.7 51.6 L 196.2 51.2 L 196.2 50.6 L 197.2 49.5 L 198.6 46.2 L 206.4 32.7 L 206.7 30.6 L 205.4 29.0 L 204.0 29.0 L 200.0 32.7 L 199.6 33.7 L 198.6 34.7 L 193.2 44.8 L 191.2 50.6 L 190.2 51.6 L 187.5 51.6 L 186.8 52.6 L 187.5 53.2 L 188.8 53.2 L 189.5 53.9 L 189.5 54.6 L 187.8 59.0 L 187.1 62.4 L 186.4 63.4 L 186.1 65.7 L 185.1 67.1 L 184.8 68.4 L 183.8 69.1 L 183.4 70.1 L 179.4 74.2 L 177.7 74.8 L 176.7 75.9 L 173.6 75.9 L 173.0 75.2 L 173.0 67.4 L 174.3 61.7 L 175.6 58.6 L 175.6 57.3 L 177.3 52.9 L 178.0 52.2 L 178.4 50.6 L 179.7 48.2 L 179.7 47.2 L 182.4 42.1 L 182.7 40.4 L 183.8 39.1 L 186.4 32.7 L 187.5 31.3 L 187.8 30.0 L 190.5 24.9 L 191.5 21.9 L 191.5 20.2 L 190.5 19.2 L 188.5 19.2 L 186.1 21.5 L 183.4 25.6 L 176.7 40.4 L 176.7 41.4 L 174.3 46.5 L 170.9 56.3 L 169.9 57.6 L 166.9 64.0 L 163.5 68.4 L 163.2 69.4 L 158.1 74.5 L 156.8 74.8 L 155.7 75.9 L 153.7 75.9 L 151.7 73.8 L 151.7 70.1 L 152.7 66.4 L 155.4 61.4 L 155.4 60.7 L 159.1 55.6 L 161.5 53.2 L 162.5 52.9 L 163.5 51.9 L 165.2 51.6 L 165.9 50.9 L 168.9 50.6 L 171.3 51.2 L 170.9 49.2 L 168.2 47.8 L 166.5 47.8 L 164.5 48.9 L 162.2 49.2 L 161.1 50.2 L 160.5 50.2 L 158.4 51.6 L 154.0 55.6 L 151.0 59.3 L 148.6 63.0 L 145.3 70.8 L 140.9 75.9 L 140.2 75.9 L 139.2 76.9 L 136.8 77.2 L 134.5 75.2 L 133.8 72.5 L 133.8 68.8 L 134.8 63.4 L 139.9 58.3 L 145.6 50.9 L 151.0 41.8 L 151.7 39.8 L 152.7 38.4 L 153.0 36.7 L 153.7 36.0 L 154.0 34.0 L 155.4 31.3 L 156.8 24.9 L 156.4 22.9 L 155.1 19.5 L 154.4 19.2 Z",
+  // Inner cutout hole for loop of 'l'
+  "M 153.7 26.6 L 153.4 29.6 L 152.7 30.6 L 152.4 33.0 L 148.0 42.4 L 147.0 43.5 L 146.6 44.8 L 145.6 45.8 L 145.6 46.5 L 140.2 54.6 L 137.5 58.0 L 136.5 58.0 L 136.5 56.6 L 137.5 54.9 L 137.8 52.9 L 144.6 38.1 L 150.3 28.6 L 152.7 26.2 Z"
+]
+
+// Returns the cursive "pldt" script modulated by the document's embedding
+export function strokesFromEmbedding(emb, width = 300, height = 120) {
   const e = (i) => (emb && emb.length > i ? emb[i % emb.length] : 0)
 
-  const slant = (e(0) || 0) * 0.22
-  const scaleX = 1 + (e(1) || 0) * 0.08
-  const scaleY = 1 + (e(2) || 0) * 0.1
-  const loopW = (e(3) || 0) * 3
-  const wobble = (e(4) || 0) * 1.2
-  const pressure = Math.max(1.8, Math.min(3.2, 2.3 + (e(5) || 0) * 0.4))
-  const flourishLift = (e(6) || 0) * 5
+  // Subtly modulate transform based on the 24-D synthetic embedding:
+  const skew = (e(0) || 0) * 4.0          // Micro slant / skew in degrees (-4 to +4)
+  const scaleX = 1 + (e(1) || 0) * 0.05   // Width stretch
+  const scaleY = 1 + (e(2) || 0) * 0.06   // Height stretch
+  const dx = (e(3) || 0) * 3.5            // Baseline shift X
+  const dy = (e(4) || 0) * 3.0            // Baseline shift Y
+  const rot = (e(6) || 0) * 1.5           // Micro rotation tilt
 
-  // Transform point (x, y) with anchor at (45, 75)
-  const T = (x, y) => {
-    const dx = (x - 45) * scaleX
-    const dy = (y - 75) * scaleY
-    const finalX = 45 + dx + dy * slant
-    const finalY = 75 + dy + Math.sin(x * 0.08) * wobble
-    return `${finalX.toFixed(1)} ${finalY.toFixed(1)}`
+  // Center anchor at (150, 60)
+  const transform = `translate(${dx.toFixed(1)}, ${dy.toFixed(1)}) translate(150, 60) rotate(${rot.toFixed(1)}) skewX(${skew.toFixed(1)}) scale(${scaleX.toFixed(2)}, ${scaleY.toFixed(2)}) translate(-150, -60)`
+
+  return {
+    paths: PLDT_CURSIVE_PATHS,
+    transform,
+    width,
+    height
   }
-
-  // Cursive "PLDT" paths:
-  // Letter P: Downstroke stem + graceful top loop cap + connector
-  const pathP = [
-    `M ${T(48, 32)} Q ${T(46, 56)} ${T(44, 86)}`,
-    `M ${T(45, 36)} C ${T(66, 24)} ${T(84, 32)} ${T(82, 52)} C ${T(80, 68)} ${T(60, 72)} ${T(45, 70)}`,
-    `M ${T(45, 70)} Q ${T(58, 80)} ${T(74, 82)}`
-  ]
-
-  // Letter L: Ascender loop soaring up from baseline, then descending to baseline loop
-  const pathL = [
-    `M ${T(74, 82)} C ${T(88, 52)} ${T(102, 20)} ${T(96, 16)} C ${T(90, 14)} ${T(80, 38)} ${T(82, 84)}`,
-    `M ${T(82, 84)} Q ${T(78 + loopW, 88)} ${T(92, 86)} Q ${T(110, 84)} ${T(122, 78)}`
-  ]
-
-  // Letter D: Classical cursive D bowl + tall ascender stem
-  const pathD = [
-    `M ${T(122, 78)} C ${T(115, 60)} ${T(116, 48)} ${T(128, 48)} C ${T(138, 48)} ${T(136, 70)} ${T(134, 84)}`,
-    `M ${T(134, 84)} C ${T(142, 52)} ${T(148, 18)} ${T(144, 15)} C ${T(140, 14)} ${T(132, 42)} ${T(135, 84)} Q ${T(148, 82)} ${T(162, 78)}`
-  ]
-
-  // Letter T: Upward cursive stem + finish flick + crossed flourish
-  const pathT = [
-    `M ${T(162, 78)} Q ${T(174, 46)} ${T(175, 22)} Q ${T(172, 58)} ${T(170, 86)} Q ${T(178, 88)} ${T(188, 80)}`,
-    `M ${T(156, 36)} Q ${T(176, 28 + flourishLift * 0.3)} ${T(202, 34)}`
-  ]
-
-  // Dynamic Signature Underline / Flourish:
-  const pathFlourish = [
-    `M ${T(36, 96)} C ${T(95, 108 + flourishLift)} ${T(180, 104)} ${T(255, 90)} Q ${T(275, 84)} ${T(285, 92)}`
-  ]
-
-  // Secondary cursive endorsement script ("specimen / voter sign"):
-  const pathEndorsement = [
-    `M ${T(215, 65)} Q ${T(228, 55)} ${T(235, 68)} T ${T(252, 64)} T ${T(270, 68)} Q ${T(290, 60)} ${T(305, 68)}`
-  ]
-
-  const lines = [
-    ...pathP,
-    ...pathL,
-    ...pathD,
-    ...pathT,
-    ...pathFlourish,
-    ...pathEndorsement
-  ]
-
-  return { lines, pressure, width, height }
 }
