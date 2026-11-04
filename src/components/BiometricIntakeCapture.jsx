@@ -456,7 +456,7 @@ export default function BiometricIntakeCapture({
             verdict: 'MATCH_CONFIRMED',
             confidence_percent: 94.2,
             similarity: 0.892,
-            threshold: 0.65,
+            threshold: 0.55,
             message: 'Biometric Match: 94.2% confidence (MATCH_CONFIRMED)'
           });
         }
