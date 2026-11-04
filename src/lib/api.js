@@ -68,6 +68,14 @@ export async function getVoterDossier(voterId) {
   return res.json();
 }
 
+export async function deleteComelecVoter(voterId) {
+  const res = await fetch(`${API_BASE}/api/comelec/voters/${encodeURIComponent(voterId)}`, {
+    method: 'DELETE'
+  });
+  if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+  return res.json();
+}
+
 export async function clearAllComelecVoters() {
   const res = await fetch(`${API_BASE}/api/comelec/voters/clear-all`, {
     method: 'DELETE'

@@ -371,6 +371,26 @@ def clear_all_registered_voters():
         "message": "All registered voter records, attendance sessions, ballots, and biometric vectors have been completely removed."
     }
 
+@app.delete("/api/comelec/voters/{voter_id}")
+def delete_single_voter(voter_id: str):
+    """Deletes a single registered voter and associated attendance records."""
+    found = False
+    if voter_id in COMELEC_VOTER_REGISTRY:
+        del COMELEC_VOTER_REGISTRY[voter_id]
+        found = True
+    if voter_id in VOTING_ATTENDANCE:
+        del VOTING_ATTENDANCE[voter_id]
+        found = True
+    if voter_id in BALLOT_ISSUANCES:
+        del BALLOT_ISSUANCES[voter_id]
+        found = True
+
+    return {
+        "status": "DELETED" if found else "NOT_FOUND",
+        "voter_id": voter_id,
+        "message": f"Voter {voter_id} deleted successfully." if found else f"Voter {voter_id} not found."
+    }
+
 @app.post("/api/comelec/register-voter")
 def register_new_citizen(payload: RegisterVoterRequest):
     """Enrolls a new real citizen into the COMELEC Registry with their photo."""

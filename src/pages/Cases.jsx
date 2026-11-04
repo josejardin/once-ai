@@ -5,7 +5,7 @@ import { Badge, Card, PageHead, RiskBadge, ScoreBar, SyntheticBanner, EmptyState
 import { CASE_STATUSES, caseOf } from '../lib/pipeline.js'
 import { CheckCircle2, MapPin, Filter, X, Clock, AlertTriangle, AlertOctagon, Trash2, RefreshCw } from 'lucide-react'
 import { LGU } from '../lib/gazetteer.js'
-import { getComelecVoters, getAllAttendance, clearAllComelecVoters } from '../lib/api.js'
+import { getComelecVoters, getAllAttendance, clearAllComelecVoters, deleteComelecVoter } from '../lib/api.js'
 
 export default function Cases() {
   const { result, state, summary, dispatch, perm, notify } = useApp()
@@ -233,7 +233,7 @@ export default function Cases() {
 
   // Detect mock test records in the pool
   const mockCases = useMemo(() => {
-    return allCasesPool.filter((a) => !a.synthetic || a.isComelecEnrolled || (state.extraApps && state.extraApps.some((ea) => ea.id === a.id)))
+    return allCasesPool.filter((a) => a.isComelecEnrolled || (state.extraApps && state.extraApps.some((ea) => ea.id === a.id)))
   }, [allCasesPool, state.extraApps])
   const mockCount = mockCases.length
 
@@ -257,10 +257,16 @@ export default function Cases() {
     if (!window.confirm(`Permanently remove mock test record "${appId}" from the Investigation Queue?`)) {
       return
     }
+    try {
+      await deleteComelecVoter(appId)
+    } catch (e) {
+      console.warn('Backend delete voter notice:', e)
+    }
     dispatch({ type: 'removeApp', id: appId })
     setComelecVoters((cur) => cur.filter((v) => v.voter_id !== appId))
+    setAttendanceRecords((cur) => cur.filter((a) => a.voter_id !== appId))
     if (sel === appId) setSel(null)
-    notify(`Mock test record ${appId} removed.`)
+    notify(`Mock test record ${appId} permanently removed.`)
   }
 
   return (
@@ -480,7 +486,7 @@ export default function Cases() {
                           <Badge tone={c.status === 'Resolved' ? 'low' : c.status === 'New' ? 'off' : 'info'}>
                             {c.status}
                           </Badge>
-                          {(!a.synthetic || a.isComelecEnrolled || state.extraApps?.some((ea) => ea.id === a.id)) && (
+                          {(a.isComelecEnrolled || state.extraApps?.some((ea) => ea.id === a.id)) && (
                             <button
                               type="button"
                               className="btn sm"
