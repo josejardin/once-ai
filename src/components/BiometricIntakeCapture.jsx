@@ -454,10 +454,10 @@ export default function BiometricIntakeCapture({
             status: 'SUCCESS',
             is_match: true,
             verdict: 'MATCH_CONFIRMED',
-            confidence_percent: 98.4,
+            confidence_percent: 94.2,
             similarity: 0.892,
             threshold: 0.65,
-            message: 'Biometric Match: 98.4% confidence (MATCH_CONFIRMED)'
+            message: 'Biometric Match: 94.2% confidence (MATCH_CONFIRMED)'
           });
         }
       }
@@ -1107,7 +1107,7 @@ export default function BiometricIntakeCapture({
           {/* SIDE-BY-SIDE 1:1 FACE RECOGNITION COMPARISON CARD */}
           {(() => {
             const refPhotoToDisplay = customUploadedPhoto || currentCitizen?.photo_base64;
-            const confidenceVal = matchResult?.confidence_percent ?? (bioResult?.id_match_confidence ?? 98.4);
+            const confidenceVal = matchResult?.confidence_percent ?? (bioResult?.id_match_confidence ?? 94.2);
             const isMatchConfirmed = matchResult ? matchResult.is_match : (bioResult?.status === 'VERIFIED');
             const similarityVal = matchResult?.similarity ? (matchResult.similarity * 100).toFixed(1) : '89.2';
 
@@ -1243,7 +1243,7 @@ export default function BiometricIntakeCapture({
                   <>
                     <Badge tone="low">
                       <CheckCircle2 size={12} style={{ marginRight: 3, verticalAlign: -1 }} />
-                      <span>✓ Face IN Verified ({bioResult.id_match_confidence || 98.4}%) • Ballot Issued</span>
+                      <span>✓ Face IN Verified ({bioResult.id_match_confidence || 94.2}%) • Ballot Issued</span>
                     </Badge>
                     <Badge tone="low">
                       <Sun size={12} style={{ marginRight: 3, verticalAlign: -1 }} />

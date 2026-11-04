@@ -218,11 +218,14 @@ export function compareGeometricDescriptors(d1, d2) {
     n2 += d2[i] * d2[i];
   }
   const cos = dot / (Math.sqrt(n1) * Math.sqrt(n2) + 1e-6);
-  const confidence = Math.max(10, Math.min(99.5, Math.round((70 + Math.max(0, (cos - 0.95) / 0.05) * 29.5) * 10) / 10));
+  const isMatch = cos >= 0.965;
+  const confidence = isMatch
+    ? Math.round((90.0 + Math.min(6.0, Math.max(0.0, ((cos - 0.965) / 0.035) * 6.0))) * 10) / 10
+    : Math.round((5.0 + Math.min(4.0, Math.max(0.0, (cos / 0.965) * 4.0))) * 10) / 10;
   return {
     similarity: cos,
     confidence_percent: confidence,
-    is_match: cos >= 0.965
+    is_match: isMatch
   };
 }
 
