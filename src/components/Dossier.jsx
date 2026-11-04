@@ -35,10 +35,10 @@ export function dossierHtml(d) {
 <h2>Screening: priority ${escapeHtml(d.screening.priorityLabel)} (score ${d.screening.priorityScore})</h2><p>${escapeHtml(d.screening.labelNote)}</p>
 <table>${d.screening.indicators.map((i) => `<tr><th>${escapeHtml(i.indicator)}</th><td><b>${escapeHtml(i.result)}</b> - review: ${escapeHtml(i.reviewStatus)}<br>${escapeHtml(i.explanation)}</td></tr>`).join('')}</table>
 ${d.geographicAnalysis ? `<h2>Geographic analysis</h2><table>${kv({ cluster: d.geographicAnalysis.clusterId, size: d.geographicAnalysis.size, status: d.geographicAnalysis.status, context: d.geographicAnalysis.context })}</table>` : ''}
-<h2>Handwriting similarity (simulated)</h2><p>${d.handwritingSimilarity.related.length ? d.handwritingSimilarity.related.map((r) => `${escapeHtml(r.id)} (${r.sim})`).join(', ') : 'No related forms above threshold.'}</p>
+<h2>Handwriting similarity (simulated)</h2><p>${(d.handwritingSimilarity?.related || []).length ? d.handwritingSimilarity.related.map((r) => `${escapeHtml(r.id)} (${r.sim})`).join(', ') : 'No related forms above threshold.'}</p>
 <h2>Case</h2><table>${kv({ status: d.case.status, disposition: d.case.disposition, rationale: d.case.rationale })}</table>
-<h2>Reviewer notes</h2><ul>${d.case.notes.map((n) => `<li>${escapeHtml(n.ts)} [${escapeHtml(n.role)}] ${escapeHtml(n.text)}</li>`).join('') || '<li>None</li>'}</ul>
-<h2>Review history</h2><ul>${d.case.history.map((n) => `<li>${escapeHtml(n.ts)} [${escapeHtml(n.role)}] ${escapeHtml(n.text)}</li>`).join('') || '<li>None</li>'}</ul>
+<h2>Reviewer notes</h2><ul>${(d.case.notes || []).map((n) => `<li>${escapeHtml(n.ts)} [${escapeHtml(n.role)}] ${escapeHtml(n.text)}</li>`).join('') || '<li>None</li>'}</ul>
+<h2>Review history</h2><ul>${(d.case.history || []).map((n) => `<li>${escapeHtml(n.ts)} [${escapeHtml(n.role)}] ${escapeHtml(n.text)}</li>`).join('') || '<li>None</li>'}</ul>
 <h2>Audit trail</h2><ul>${d.auditTrail.map((e) => `<li>#${e.id} ${escapeHtml(e.ts)} ${escapeHtml(e.action)} - ${escapeHtml(e.detail)} (hash ${escapeHtml(e.hash)})</li>`).join('') || '<li>None</li>'}</ul>
 </body></html>`
 }
@@ -190,10 +190,10 @@ export default function Dossier({ appId, appData, inline }) {
         {app.document ? (
           <div className="compare">
             <HandwritingSample app={app} caption={`${app.id} (this form)`} customImage="/specimen_a.png" />
-            {app.related[0] ? <HandwritingSample app={result.byId[app.related[0].id]} caption={`${app.related[0].id} - similarity ${app.related[0].sim}`} customImage="/specimen_b.png" /> : <div className="muted small">No related form above the similarity threshold.</div>}
+            {(app.related && app.related[0]) ? <HandwritingSample app={result.byId[(app.related && app.related[0]).id]} caption={`${(app.related && app.related[0]).id} - similarity ${(app.related && app.related[0]).sim}`} customImage="/specimen_b.png" /> : <div className="muted small">No related form above the similarity threshold.</div>}
           </div>
         ) : <div className="muted small">No scanned form on file.</div>}
-        {app.related.length > 0 && <div className="row small" style={{ marginTop: 6 }}><span className="muted">Related applications:</span>{app.related.map((r) => <button key={r.id} className="chip mono" onClick={() => openApp(r.id)}>{r.id} ({r.sim})</button>)}</div>}
+        {(app.related || []).length > 0 && <div className="row small" style={{ marginTop: 6 }}><span className="muted">Related applications:</span>{(app.related || []).map((r) => <button key={r.id} className="chip mono" onClick={() => openApp(r.id)}>{r.id} ({r.sim})</button>)}</div>}
         <div className="small muted" style={{ marginTop: 6 }}>A similarity value is not proof of forgery or common authorship. Scan quality and natural similarity affect results.</div>
       </div>
 
@@ -217,7 +217,7 @@ export default function Dossier({ appId, appData, inline }) {
           <div className="row" style={{ flexWrap: 'nowrap' }}><input type="text" value={note} disabled={locked} onChange={(e) => setNote(e.target.value)} placeholder={locked ? 'Viewer role is read-only' : 'Add an observation or field-verification result'} onKeyDown={(e) => e.key === 'Enter' && note.trim() && (dispatch({ type: 'note', id: app.id, text: note.trim() }), setNote(''))} />
             <button className="btn" disabled={locked || !note.trim()} onClick={() => { dispatch({ type: 'note', id: app.id, text: note.trim() }); setNote('') }}>Add note</button></div>
         </div>
-        <ul className="timeline" style={{ marginTop: 10 }}>{cs.notes.length ? cs.notes.slice().reverse().map((n, i) => <li key={i}><span className="mono muted">{fmtTime(n.ts)} - {n.role}</span><br />{n.text}</li>) : <li className="muted">No notes yet.</li>}</ul>
+        <ul className="timeline" style={{ marginTop: 10 }}>{(cs.notes || []).length ? (cs.notes || []).slice().reverse().map((n, i) => <li key={i}><span className="mono muted">{fmtTime(n.ts)} - {n.role}</span><br />{n.text}</li>) : <li className="muted">No notes yet.</li>}</ul>
         {(!app.synthetic || app.isComelecEnrolled || state.extraApps?.some((ea) => ea.id === app.id)) && (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1.5px dashed #fca5a5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="small muted">Mock Testing Record:</span>
