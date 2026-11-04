@@ -536,10 +536,10 @@ export default function BiometricIntakeCapture({
             voter_id: vId,
             status: data.status,
             stage: 'FACE_OUT',
-            face_out_time: data.face_out_timestamp,
-            duration: data.duration_formatted,
+            face_out_time: data.face_out_timestamp || new Date().toISOString(),
+            duration: data.duration_formatted || 'Normal',
             timing_anomaly: data.timing_anomaly,
-            isMatch: data.status === 'COMPLETED'
+            isMatch: data.status === 'COMPLETED' || data.status === 'COMPLETED_WITH_ANOMALY'
           });
         }
       }

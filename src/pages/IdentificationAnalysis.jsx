@@ -172,7 +172,10 @@ export default function IdentificationAnalysis() {
     biometricData?.stage === 'FACE_OUT' || 
     biometricData?.face_out_time || 
     biometricData?.duration ||
-    (selectedVoter && (selectedVoter.has_voted || selectedVoter.attendance?.face_out))
+    biometricData?.status === 'COMPLETED' ||
+    biometricData?.status === 'COMPLETED_WITH_ANOMALY' ||
+    biometricData?.status === 'EXIT_FACE_MISMATCH' ||
+    (selectedVoter && (selectedVoter.has_voted || selectedVoter.attendance?.face_out || selectedVoter.attendance?.status?.includes('COMPLETED')))
   )
 
   const submitApplication = () => {
