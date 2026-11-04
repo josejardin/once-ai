@@ -1204,10 +1204,6 @@ export default function BiometricIntakeCapture({
                         </span>
                         <b style={{ color: '#16a34a' }}>4/4 Followed & Verified</b>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text)' }}>
-                        <span>Facenet512 Cosine Score:</span>
-                        <b className="mono">{similarityVal}% (Threshold: &ge;65%)</b>
-                      </div>
                     </div>
                   </div>
 

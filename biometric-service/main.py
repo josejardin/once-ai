@@ -592,7 +592,7 @@ def verify_face_in(payload: FaceInCheckinRequest):
                         best_match_sim = sim
                         best_match_voter = cand_voter
 
-            if best_match_sim >= 0.65 and best_match_voter is not None:
+            if best_match_sim >= 0.55 and best_match_voter is not None:
                 target_voter = best_match_voter
                 payload.voter_id = target_voter["voter_id"]
                 payload.voter_name = target_voter["name"]
@@ -706,18 +706,18 @@ def verify_face_in(payload: FaceInCheckinRequest):
             id_sim = compute_cosine_similarity(salted_vector, ref_vector_to_use)
             
             # Range: 90% to 96% for Match, 5% to 9% for Imposter
-            if id_sim >= 0.65:
-                confidence_pct = round(90.0 + min(6.0, max(0.0, ((id_sim - 0.65) / 0.35) * 6.0)), 1)
+            if id_sim >= 0.55:
+                confidence_pct = round(90.0 + min(6.0, max(0.0, ((id_sim - 0.55) / 0.45) * 6.0)), 1)
             else:
-                confidence_pct = round(5.0 + min(4.0, max(0.0, (id_sim / 0.65) * 4.0)), 1)
+                confidence_pct = round(5.0 + min(4.0, max(0.0, (id_sim / 0.55) * 4.0)), 1)
 
             ref_photo_to_store = payload.id_photo_base64 or (target_voter.get("photo_base64") if target_voter else None)
 
-            if id_sim < 0.65:
+            if id_sim < 0.55:
                 anomaly_data = {
                     "flag": "IMPOSTOR_MISMATCH",
                     "severity": "HIGH",
-                    "reason": f"Live face does not match reference ID photo ({confidence_pct}% match, similarity {round(id_sim, 3)} < 0.650 threshold).",
+                    "reason": f"Live face does not match reference ID photo ({confidence_pct}% match, similarity {round(id_sim, 3)} < 0.550 threshold).",
                     "explanation": f"Citizen official reference photo does not match live face at intake terminal."
                 }
                 effective_vid = target_voter["voter_id"] if target_voter else payload.voter_id
@@ -915,14 +915,14 @@ def compare_faces(payload: CompareFacesRequest):
 
         sim = compute_cosine_similarity(live_salted, ref_salted)
 
-        # Facenet512 Threshold: 0.65
+        # Facenet512 Threshold: 0.55
         # Range: 90% to 96% for Match, 5% to 9% for Imposter
-        if sim >= 0.65:
-            confidence_pct = round(90.0 + min(6.0, max(0.0, ((sim - 0.65) / 0.35) * 6.0)), 1)
+        if sim >= 0.55:
+            confidence_pct = round(90.0 + min(6.0, max(0.0, ((sim - 0.55) / 0.45) * 6.0)), 1)
             is_match = True
             verdict = "MATCH_CONFIRMED"
         else:
-            confidence_pct = round(5.0 + min(4.0, max(0.0, (sim / 0.65) * 4.0)), 1)
+            confidence_pct = round(5.0 + min(4.0, max(0.0, (sim / 0.55) * 4.0)), 1)
             is_match = False
             verdict = "IMPOSTOR_MISMATCH"
 
@@ -932,7 +932,7 @@ def compare_faces(payload: CompareFacesRequest):
             "verdict": verdict,
             "confidence_percent": confidence_pct,
             "similarity": round(float(sim), 4),
-            "threshold": 0.65,
+            "threshold": 0.55,
             "message": f"Biometric Match: {confidence_pct}% confidence ({verdict})" if is_match else f"Biometric Mismatch: Only {confidence_pct}% confidence. Live face does not match reference photo."
         }
     except Exception as e:
@@ -1030,14 +1030,14 @@ def verify_face_out(payload: FaceOutCheckoutRequest):
 
         effective_sim = in_sim if in_sim is not None else (id_sim if id_sim is not None else 0.95)
 
-        if effective_sim < 0.65:
+        if effective_sim < 0.55:
             # Impostor / Booth substitution mismatch range: 5% to 9%
-            mismatch_pct = round(5.0 + min(4.0, max(0.0, (effective_sim / 0.65) * 4.0)), 1)
+            mismatch_pct = round(5.0 + min(4.0, max(0.0, (effective_sim / 0.55) * 4.0)), 1)
             anomaly_data = {
                 "flag": "BOOTH_SUBSTITUTION_TAMPERING",
                 "severity": "CRITICAL",
                 "similarity": mismatch_pct,
-                "reason": f"Face presenting at exit does NOT match Face IN ({mismatch_pct}% match, similarity {round(effective_sim, 3)} < 0.650 threshold).",
+                "reason": f"Face presenting at exit does NOT match Face IN ({mismatch_pct}% match, similarity {round(effective_sim, 3)} < 0.550 threshold).",
                 "explanation": "Security Alert: Individual presenting at ballot exit is not the verified voter who received the physical ballot at Face IN."
             }
             attendance_rec["status"] = "BLOCKED (BOOTH SUBSTITUTION AT EXIT)"
@@ -1065,7 +1065,7 @@ def verify_face_out(payload: FaceOutCheckoutRequest):
             }
         else:
             # Verified Match range: 90% to 96%
-            id_match_confidence = round(90.0 + min(6.0, max(0.0, ((effective_sim - 0.65) / 0.35) * 6.0)), 1)
+            id_match_confidence = round(90.0 + min(6.0, max(0.0, ((effective_sim - 0.55) / 0.45) * 6.0)), 1)
 
         # 4. Compute Duration from Face IN to Face OUT
         if payload.simulated_duration_seconds is not None and payload.simulated_duration_seconds > 0:
