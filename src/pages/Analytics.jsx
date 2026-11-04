@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useApp } from '../store.jsx'
 import { Card, HBars, PageHead, Stat, SyntheticBanner, VBars, Badge } from '../components/ui.jsx'
 import { INDICATORS, CASE_STATUSES, DISPOSITIONS, caseOf } from '../lib/pipeline.js'
+import { cosine } from '../lib/handwriting.js'
 import { download, toCSV, escapeHtml, DISCLAIMER } from '../lib/export.js'
 import { getDurationAnalytics } from '../lib/api.js'
 import { Clock, AlertTriangle, CheckCircle2, TrendingUp, Zap, Users, BarChart3 } from 'lucide-react'
@@ -87,6 +88,17 @@ export default function Analytics() {
     { label: '14:00', value: 45 },
     { label: '15:00', value: 38 }
   ]
+
+  // Pairwise Handwriting Similarity Distribution
+  const hwDist = React.useMemo(() => {
+    const docs = (result.apps || []).filter((a) => a.document)
+    const bins = Array(10).fill(0)
+    for (let i = 0; i < docs.length; i++) for (let j = i + 1; j < docs.length; j++) {
+      const s = cosine(docs[i].document.embedding, docs[j].document.embedding)
+      bins[Math.max(0, Math.min(9, Math.floor((s + 1) * 5)))]++
+    }
+    return bins
+  }, [result.apps])
 
   // Combined Anomaly Categories (Biometrics, Pacing, Handwriting, Geospatial)
   const comprehensiveAnomalies = [

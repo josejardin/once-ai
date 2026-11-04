@@ -655,69 +655,6 @@ export default function IdentificationAnalysis() {
       {/* ----------------- TAB: SIGNATURE INTELLIGENCE & COLLUSION ----------------- */}
       {tab === 'signature' && <SignatureArena />}
 
-      {/* ----------------- TAB 2: HANDWRITING SIMILARITY (BATCH FORGERY) ----------------- */}
-      {tab === 'handwriting' && (
-        <>
-          <div className="banner alert">
-            <b>Forensic Handwriting Analysis.</b> Compares 24-dimensional penmanship and glyph embeddings using cosine similarity to isolate coordinated batch forgeries where a single individual filled out multiple voter registration applications.
-          </div>
-          <div className="grid g-main">
-            <Card title="Potentially related applications" sub={`${pairs.length} pairs ≥ ${cfg.hwThreshold} · ${result.handwriting.groups.length} groups`}>
-              <div className="tablewrap" style={{ maxHeight: 420 }}>
-                <table>
-                  <thead>
-                    <tr><th>Form A</th><th>Form B</th><th>Similarity</th><th>Notes</th></tr>
-                  </thead>
-                  <tbody>
-                    {pairs.map((p, i) => (
-                      <tr 
-                        key={p.a + p.b} 
-                        className={`click ${i === pairSel ? 'sel' : ''}`} 
-                        onClick={() => setPairSel(i)} 
-                        tabIndex={0} 
-                        onKeyDown={(e) => e.key === 'Enter' && setPairSel(i)}
-                      >
-                        <td className="mono">{p.a}</td>
-                        <td className="mono">{p.b}</td>
-                        <td className="mono"><b>{p.sim.toFixed(3)}</b></td>
-                        <td className="small">{p.lowQuality ? <Badge tone="mod">low scan quality</Badge> : <Badge tone="high">flagged</Badge>}</td>
-                      </tr>
-                    ))}
-                    {!pairs.length && <tr><td colSpan="4" className="muted">No pairs reach the threshold.</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-              <div className="row small" style={{ marginTop: 10 }}>
-                {result.handwriting.groups.map((g) => (
-                  <Badge key={g.id} tone="sim" title={g.ids.join(', ')}>{g.id}: {g.ids.length} forms</Badge>
-                ))}
-              </div>
-            </Card>
-
-            <Card title="Pairwise similarity distribution" sub="all application form pairs">
-              <div className="vbars">
-                {dist.map((v, i) => (
-                  <div className="vbar" key={i} title={`similarity ${(i / 5 - 1).toFixed(1)} to ${((i + 1) / 5 - 1).toFixed(1)}: ${v} pairs`}>
-                    <span>{v}</span>
-                    <i 
-                      style={{ 
-                        height: `${Math.max(2, (Math.log10(v + 1) / Math.log10(Math.max(...dist) + 1)) * 100)}%`, 
-                        background: i >= 9 ? 'var(--mod)' : 'var(--blue)' 
-                      }} 
-                    />
-                    <span>{(i / 5 - 1).toFixed(1)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="small muted">
-                Log-scaled counts. Nearly all form pairs are naturally distinct; the right-most bin isolates statistically improbable handwriting matches.
-              </div>
-            </Card>
-          </div>
-
-        </>
-      )}
-
       {/* ENROLL MOCK CITIZEN MODAL */}
       {showEnrollModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'grid', placeItems: 'center', padding: 20 }}>

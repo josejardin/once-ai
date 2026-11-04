@@ -14,6 +14,7 @@ import {
   COLLISION_THRESHOLD
 } from '../lib/signatureEngine.js'
 import { useApp } from '../store.jsx'
+import { Badge, Card } from './ui.jsx'
 
 // Pre-defined realistic signature paths for seed voters
 const PRESET_PATHS = {
@@ -484,6 +485,41 @@ export default function SignatureArena() {
         </div>
 
       </div>
-    </div>
+    
+      {/* POTENTIALLY RELATED APPLICATIONS (BATCH FORGERY / COLLUSION RADAR) */}
+      <div style={{ marginTop: 24 }}>
+        <Card title="Potentially related applications" sub={`${pairs.length} pairs ≥ ${cfg?.hwThreshold || 0.85} · ${result?.handwriting?.groups?.length || 0} groups`}>
+          <div className="tablewrap" style={{ maxHeight: 380 }}>
+            <table>
+              <thead>
+                <tr><th>Form A</th><th>Form B</th><th>Similarity</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                {pairs.map((p, i) => (
+                  <tr 
+                    key={p.a + p.b} 
+                    className={`click ${i === pairSel ? 'sel' : ''}`} 
+                    onClick={() => setPairSel(i)} 
+                    tabIndex={0} 
+                    onKeyDown={(e) => e.key === 'Enter' && setPairSel(i)}
+                  >
+                    <td className="mono"><b>{p.a}</b></td>
+                    <td className="mono"><b>{p.b}</b></td>
+                    <td className="mono"><b>{p.sim.toFixed(3)}</b></td>
+                    <td className="small">{p.lowQuality ? <Badge tone="mod">low scan quality</Badge> : <Badge tone="high">flagged</Badge>}</td>
+                  </tr>
+                ))}
+                {!pairs.length && <tr><td colSpan="4" className="muted" style={{ textAlign: 'center', padding: 14 }}>No pairs reach the threshold.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div className="row small" style={{ marginTop: 10, gap: 6, flexWrap: 'wrap' }}>
+            {(result?.handwriting?.groups || []).map((g) => (
+              <Badge key={g.id} tone="sim" title={g.ids.join(', ')}>{g.id}: {g.ids.length} forms</Badge>
+            ))}
+          </div>
+        </Card>
+      </div>
+  </div>
   )
 }
