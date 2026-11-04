@@ -145,6 +145,14 @@ export default function BiometricIntakeCapture({
     bioResult?.status === 'COMPLETED_WITH_ANOMALY'
   );
 
+  // Step 2 Completion status:
+  const isStep2Completed = Boolean(
+    bioResult?.status === 'COMPLETED' || 
+    bioResult?.status === 'COMPLETED_WITH_ANOMALY' || 
+    bioResult?.stage === 'FACE_OUT' ||
+    (!isResetOverride && (currentCitizen?.attendance?.face_out || currentCitizen?.has_voted || currentCitizen?.attendance?.status?.includes('COMPLETED')))
+  );
+
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const landmarkerRef = useRef(null);
@@ -852,7 +860,7 @@ export default function BiometricIntakeCapture({
             width: 34,
             height: 34,
             borderRadius: '50%',
-            background: (bioResult?.status === 'COMPLETED' || bioResult?.status === 'COMPLETED_WITH_ANOMALY' || selectedVoter?.attendance?.face_out) ? (bioResult?.timing_anomaly?.flag && bioResult.timing_anomaly.flag !== 'NORMAL' ? '#ef4444' : '#22c55e') : (stage === 'OUT' ? 'var(--blue)' : 'var(--panel)'),
+            background: isStep2Completed ? (bioResult?.timing_anomaly?.flag && bioResult.timing_anomaly.flag !== 'NORMAL' ? '#ef4444' : '#22c55e') : (stage === 'OUT' ? 'var(--blue)' : 'var(--panel)'),
             color: '#fff',
             display: 'grid',
             placeItems: 'center',
@@ -860,14 +868,14 @@ export default function BiometricIntakeCapture({
             fontSize: 14,
             flexShrink: 0
           }}>
-            {(bioResult?.status === 'COMPLETED' || bioResult?.status === 'COMPLETED_WITH_ANOMALY' || selectedVoter?.attendance?.face_out) ? '✓' : '2'}
+            {isStep2Completed ? '✓' : '2'}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 13, color: stage === 'OUT' ? 'var(--blue)' : 'var(--text)' }}>
               Step 2: Face OUT (Exit)
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-              {(bioResult?.status === 'COMPLETED' || bioResult?.status === 'COMPLETED_WITH_ANOMALY' || selectedVoter?.attendance?.face_out)
+              {isStep2Completed
                 ? (bioResult?.timing_anomaly?.flag && bioResult.timing_anomaly.flag !== 'NORMAL' ? `🚨 Flagged: ${bioResult.timing_anomaly.flag}` : '✓ Ballot Cast & Pacing Verified')
                 : 'Feed ballot box & verify duration'}
             </div>

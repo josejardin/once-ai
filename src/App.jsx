@@ -68,15 +68,26 @@ export default function App() {
       try {
         const data = await getComelecVoters()
         const voters = data?.voters || []
-        // Count voters or walk-ins that have an active case (status !== 'Resolved')
+        // Only count voters who have an actual active investigation case or suspected anomaly
         const activeCount = voters.filter(v => {
           const cs = state.caseState[v.voter_id]
           const isResolved = cs?.status === 'Resolved'
-          return !isResolved
-        }).length + (state.extraApps || []).filter(a => !a.synthetic && state.caseState[a.id]?.status !== 'Resolved').length
+          const hasAnomaly = !!(
+            cs?.suspectedFlag ||
+            (v.attendance?.anomaly_flag && v.attendance.anomaly_flag !== 'NORMAL') ||
+            (v.registration_status && (v.registration_status.includes('BLOCKED') || v.registration_status.includes('LOCKED')))
+          )
+          return hasAnomaly && !isResolved
+        }).length + (state.extraApps || []).filter(a => {
+          if (a.synthetic) return false
+          const cs = state.caseState[a.id]
+          const isResolved = cs?.status === 'Resolved'
+          const hasAnomaly = !!(a.issue || a.timing_anomaly || cs?.suspectedFlag)
+          return hasAnomaly && !isResolved
+        }).length
         setRealCasesCount(activeCount)
       } catch (e) {
-        setRealCasesCount((state.extraApps || []).filter(a => !a.synthetic && state.caseState[a.id]?.status !== 'Resolved').length)
+        setRealCasesCount((state.extraApps || []).filter(a => !a.synthetic && (a.issue || a.timing_anomaly || state.caseState[a.id]?.suspectedFlag) && state.caseState[a.id]?.status !== 'Resolved').length)
       }
     }
     syncRealCases()

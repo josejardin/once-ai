@@ -231,10 +231,14 @@ export default function Cases() {
     setManual('')
   }
 
-  // Detect mock test records in the pool
+  // Detect mock test records in the pool that have actual anomalies or open mock investigation cases
   const mockCases = useMemo(() => {
-    return allCasesPool.filter((a) => a.isComelecEnrolled || (state.extraApps && state.extraApps.some((ea) => ea.id === a.id)))
-  }, [allCasesPool, state.extraApps])
+    return allCasesPool.filter((a) => {
+      const isMockOrExtra = a.isComelecEnrolled || (state.extraApps && state.extraApps.some((ea) => ea.id === a.id))
+      const hasAnomalyOrFlag = !!(a.issue || a.timing_anomaly || a.label !== 'Low' || state.caseState[a.id])
+      return isMockOrExtra && hasAnomalyOrFlag
+    })
+  }, [allCasesPool, state.extraApps, state.caseState])
   const mockCount = mockCases.length
 
   const handlePurgeAllMockTesting = async () => {
