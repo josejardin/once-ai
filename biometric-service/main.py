@@ -689,7 +689,7 @@ def verify_face_in(payload: FaceInCheckinRequest):
             }
 
         # 5. Check 1:1 ID Photo Match against registered COMELEC record or custom uploaded photo
-        id_match_confidence = 98.2
+        id_match_confidence = 94.2
 
         custom_ref_vector = None
         if payload.id_photo_base64:
@@ -705,10 +705,11 @@ def verify_face_in(payload: FaceInCheckinRequest):
         if ref_vector_to_use is not None:
             id_sim = compute_cosine_similarity(salted_vector, ref_vector_to_use)
             
+            # Range: 90% to 96% for Match, 5% to 9% for Imposter
             if id_sim >= 0.65:
-                confidence_pct = round(75.0 + min(24.5, ((id_sim - 0.65) / 0.35) * 24.5), 1)
+                confidence_pct = round(90.0 + min(6.0, max(0.0, ((id_sim - 0.65) / 0.35) * 6.0)), 1)
             else:
-                confidence_pct = round(max(5.0, (id_sim / 0.65) * 45.0), 1)
+                confidence_pct = round(5.0 + min(4.0, max(0.0, (id_sim / 0.65) * 4.0)), 1)
 
             ref_photo_to_store = payload.id_photo_base64 or (target_voter.get("photo_base64") if target_voter else None)
 
@@ -915,12 +916,13 @@ def compare_faces(payload: CompareFacesRequest):
         sim = compute_cosine_similarity(live_salted, ref_salted)
 
         # Facenet512 Threshold: 0.65
+        # Range: 90% to 96% for Match, 5% to 9% for Imposter
         if sim >= 0.65:
-            confidence_pct = round(75.0 + min(24.5, ((sim - 0.65) / 0.35) * 24.5), 1)
+            confidence_pct = round(90.0 + min(6.0, max(0.0, ((sim - 0.65) / 0.35) * 6.0)), 1)
             is_match = True
             verdict = "MATCH_CONFIRMED"
         else:
-            confidence_pct = round(max(5.0, (sim / 0.65) * 55.0), 1)
+            confidence_pct = round(5.0 + min(4.0, max(0.0, (sim / 0.65) * 4.0)), 1)
             is_match = False
             verdict = "IMPOSTOR_MISMATCH"
 
@@ -1010,7 +1012,7 @@ def verify_face_out(payload: FaceOutCheckoutRequest):
         salted_vector = apply_crypto_salt(raw_vector)
 
         # 3. Verify that the face exiting is indeed the SAME person who checked in (1:1 Exit Verification)
-        id_match_confidence = 98.5
+        id_match_confidence = 94.5
         in_sim = None
         if attendance_rec.get("photo_in_base64"):
             try:
@@ -1029,7 +1031,8 @@ def verify_face_out(payload: FaceOutCheckoutRequest):
         effective_sim = in_sim if in_sim is not None else (id_sim if id_sim is not None else 0.95)
 
         if effective_sim < 0.65:
-            mismatch_pct = round(max(0.0, (effective_sim / 0.65) * 48.0), 1)
+            # Impostor / Booth substitution mismatch range: 5% to 9%
+            mismatch_pct = round(5.0 + min(4.0, max(0.0, (effective_sim / 0.65) * 4.0)), 1)
             anomaly_data = {
                 "flag": "BOOTH_SUBSTITUTION_TAMPERING",
                 "severity": "CRITICAL",
@@ -1061,7 +1064,8 @@ def verify_face_out(payload: FaceOutCheckoutRequest):
                 "stored_id_photo": target_voter["photo_base64"] if target_voter else None
             }
         else:
-            id_match_confidence = round(75.0 + min(24.5, ((effective_sim - 0.65) / 0.35) * 24.5), 1)
+            # Verified Match range: 90% to 96%
+            id_match_confidence = round(90.0 + min(6.0, max(0.0, ((effective_sim - 0.65) / 0.35) * 6.0)), 1)
 
         # 4. Compute Duration from Face IN to Face OUT
         if payload.simulated_duration_seconds is not None and payload.simulated_duration_seconds > 0:
@@ -1272,7 +1276,7 @@ def get_voter_dossier(voter_id: str):
         "duration_seconds": (att.get("duration_seconds") if att else None) or (voter.get("duration_seconds") if voter else None),
         "duration_formatted": (att.get("duration_formatted") if att else None) or (voter.get("duration_formatted") if voter else None),
         "timing_anomaly": (att.get("timing_anomaly") if att else None) or (voter.get("timing_anomaly") if voter else None),
-        "id_match_confidence": att.get("id_match_confidence", 98.2) if att else 98.2
+        "id_match_confidence": att.get("id_match_confidence", 94.2) if att else 94.2
     }
 
     return dossier

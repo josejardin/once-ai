@@ -64,7 +64,10 @@ function drawPathsOnCanvas(canvas, paths, strokeColor = '#1e293b') {
 }
 
 export default function SignatureArena() {
-  const { state, dispatch, notify, openApp } = useApp()
+  const { result, state, dispatch, notify, openApp } = useApp()
+  const [pairSel, setPairSel] = useState(0)
+  const cfg = state?.config
+  const pairs = result?.handwriting?.pairs || []
   const padRef = useRef(null)
 
   // Demo Enrolled Registry

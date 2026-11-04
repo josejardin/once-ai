@@ -37,23 +37,6 @@ export default function IdentificationAnalysis() {
   const [selectedVoter, setSelectedVoter] = useState(null)
   const fileRef = useRef(null)
 
-  // --- HANDWRITING SIMILARITY STATE ---
-  const [pairSel, setPairSel] = useState(0)
-  const cfg = state.config
-  const pairs = result.handwriting.pairs
-  const pair = pairs[Math.min(pairSel, pairs.length - 1)]
-  const pa = pair && result.byId[pair.a]
-  const pb = pair && result.byId[pair.b]
-
-  const dist = useMemo(() => {
-    const docs = result.apps.filter((a) => a.document)
-    const bins = Array(10).fill(0)
-    for (let i = 0; i < docs.length; i++) for (let j = i + 1; j < docs.length; j++) {
-      const s = cosine(docs[i].document.embedding, docs[j].document.embedding)
-      bins[Math.max(0, Math.min(9, Math.floor((s + 1) * 5)))]++
-    }
-    return bins
-  }, [result.apps])
 
   // --- COMELEC MOCK REGISTRY STATE ---
   const [registryLoading, setRegistryLoading] = useState(false)
